@@ -1,0 +1,18 @@
+# Despliegue en frontend-server (host actual)
+# ---------------------------------------------------------------------------
+# openwa-api reutiliza el PostgreSQL y el Redis que YA corren en este servidor
+# (contenedores bancaribe_db, puerto host 5434, y bancaribe_redis, puerto host 6379) en vez
+# de levantar los servicios "postgres"/"redis" incluidos en docker-compose.yml (profiles
+# 'postgres'/'redis'/'full', que aquí se dejan sin activar).
+#
+# host.docker.internal resuelve, desde dentro del contenedor, a la IP del host vía el
+# gateway de Docker (extra_hosts + host-gateway, soportado en Docker 20.10+ en Linux). Así
+# openwa-api llega a los puertos publicados de bancaribe_db/bancaribe_redis sin necesidad de
+# unir su red docker interna.
+#
+# Compose recoge este archivo automáticamente al hacer `docker compose up` (se fusiona con
+# docker-compose.yml sin necesidad de pasar -f).
+services:
+  openwa-api:
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
