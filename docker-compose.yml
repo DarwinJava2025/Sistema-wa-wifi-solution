@@ -379,6 +379,15 @@ services:
     volumes:
       - openwa-data:/app/data
       - ./docker-compose.yml:/app/docker-compose.yml:ro
+    # Deploy propio de este servidor: reutilizamos el Postgres/Redis que ya corren para
+    # bancaribe-wifi y plaza-wifi (contenedores bancaribe_db/bancaribe_redis, puertos 5434/6379
+    # publicados al host) en vez de levantar un tercer Postgres+Redis acá -ver postgres/redis
+    # más abajo, que quedan sin usar mientras no se les pase --profile postgres/--profile redis-.
+    # openwa-api corre en la red bridge `openwa-network`, así que "localhost" dentro del
+    # contenedor es el contenedor mismo, no el host -por eso hace falta este extra_hosts para
+    # poder apuntar DATABASE_HOST/REDIS_HOST a host.docker.internal en el .env (ver .env.example).
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       docker-proxy:
         condition: service_started
