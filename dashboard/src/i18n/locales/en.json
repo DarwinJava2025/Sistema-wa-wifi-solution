@@ -63,7 +63,9 @@
     "messageTester": "Message Tester",
     "infrastructure": "Infrastructure",
     "plugins": "Plugins",
-    "logs": "Logs"
+    "logs": "Logs",
+    "scheduledMessages": "Scheduled Messages",
+    "groupBroadcasts": "Group Broadcasts"
   },
   "chats": {
     "media": {
@@ -658,7 +660,12 @@
     "send": "Send Message",
     "sending": "Sending...",
     "viewOnly": "View Only",
-    "responseEmpty": "Send a message to see the API response",
+    "curlPreview": "cURL Command",
+    "livePreview": "Real-time",
+    "copyCurl": "Copy cURL",
+    "copied": "Copied!",
+    "copy": "Copy",
+    "responseEmpty": "Send a message to view the API response",
     "successLabel": "Success",
     "failedLabel": "Failed",
     "response": {

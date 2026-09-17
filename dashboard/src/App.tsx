@@ -21,6 +21,8 @@ const Templates = lazy(() => import('./pages/Templates').then(m => ({ default: m
 const Logs = lazy(() => import('./pages/Logs').then(m => ({ default: m.Logs })));
 const ApiKeys = lazy(() => import('./pages/ApiKeys').then(m => ({ default: m.ApiKeys })));
 const MessageTester = lazy(() => import('./pages/MessageTester').then(m => ({ default: m.MessageTester })));
+const ScheduledMessages = lazy(() => import('./pages/ScheduledMessages').then(m => ({ default: m.ScheduledMessages })));
+const GroupBroadcasts = lazy(() => import('./pages/GroupBroadcasts').then(m => ({ default: m.GroupBroadcasts })));
 const Infrastructure = lazy(() => import('./pages/Infrastructure').then(m => ({ default: m.Infrastructure })));
 const Plugins = lazy(() => import('./pages/Plugins'));
 
@@ -112,6 +114,8 @@ function AppContent() {
               <Route index element={<Dashboard />} />
               <Route path="sessions" element={<Sessions />} />
               <Route path="chats" element={<Chats />} />
+              <Route path="scheduled-messages" element={<ScheduledMessages />} />
+              <Route path="group-broadcasts" element={<GroupBroadcasts />} />
               <Route path="webhooks" element={<Webhooks />} />
               <Route path="templates" element={<Templates />} />
               {role === 'admin' && <Route path="api-keys" element={<ApiKeys />} />}

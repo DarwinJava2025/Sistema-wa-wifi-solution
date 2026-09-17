@@ -186,6 +186,15 @@ select:disabled {
   overflow: hidden;
 }
 
+.modal.create-session-modal-unified,
+.modal.session-ai-modal-unified,
+.modal.modal-studio-wide {
+  width: 96vw !important;
+  max-width: 1360px !important;
+  height: 88vh !important;
+  max-height: 88vh !important;
+}
+
 /* The install-plugin modal holds the catalog list — a bit wider on desktop for comfortable reading.
    The responsive rules below (<=768px: 95% width; <=480px: full-width bottom sheet) still apply, so
    it stays responsive on small screens. Lives here (global modal styles) rather than in a page CSS
@@ -238,22 +247,37 @@ select:disabled {
   margin-bottom: 0.5rem;
 }
 
-.modal-body input {
+.modal-body input,
+.modal-body textarea,
+.modal-body select {
   width: 100%;
   padding: 0.875rem 1rem;
   border: 1px solid var(--border, #e2e8f0);
   border-radius: 8px;
   font-size: 0.9375rem;
+  line-height: 1.5;
   background: var(--bg-light, #f8fafc);
+  color: var(--text-primary, #0f172a) !important;
+  caret-color: var(--primary, #25d366);
   transition: all 0.2s;
   box-sizing: border-box;
+  font-family: inherit;
 }
 
-.modal-body input:focus {
+.modal-body input::placeholder,
+.modal-body textarea::placeholder {
+  color: var(--text-muted, #94a3b8);
+  opacity: 0.85;
+}
+
+.modal-body input:focus,
+.modal-body textarea:focus,
+.modal-body select:focus {
   outline: none;
   border-color: var(--primary, #25d366);
   background: var(--bg-white, #fff);
-  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.1);
+  color: var(--text-primary, #0f172a) !important;
+  box-shadow: 0 0 0 3px rgba(37, 211, 102, 0.15);
 }
 
 /* The rule above is meant for TEXT inputs. Radios/checkboxes would otherwise stretch to width:100%

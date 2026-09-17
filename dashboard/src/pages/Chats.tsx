@@ -4,7 +4,6 @@ import { Trans, useTranslation } from 'react-i18next';
 import { nextReconnectState } from '../utils/reconnectState';
 import { applyIncomingToChatList } from '../utils/chatList';
 import { filterChats, filterChannels, groupStatusesByContact } from '../utils/chatFilters';
-import { ArrowLeft, Loader2, Megaphone, CircleDashed, AlertCircle, MessageSquare } from 'lucide-react';
 import { useProfilePicture } from '../hooks/useProfilePicture';
 import { useProfilePictures } from '../hooks/useProfilePictures';
 import { useResolvedPhone } from '../hooks/useResolvedPhone';
@@ -48,6 +47,10 @@ import ChatThread from '../components/chats/ChatThread';
 import ChatComposer, { type StagedAttachment } from '../components/chats/ChatComposer';
 import StatusMedia from '../components/chats/StatusMedia';
 import StatusComposeModal from '../components/chats/StatusComposeModal';
+import AiAssistantModal from '../components/chats/AiAssistantModal';
+import NewChatModal from '../components/chats/NewChatModal';
+import { getEffectiveAiConfig, AI_ROLES, generateAiChatResponse, isWithinBusinessHours } from '../services/aiAssistant';
+import { ArrowLeft, Loader2, Megaphone, CircleDashed, AlertCircle, MessageSquare, Bot } from 'lucide-react';
 import './Chats.css';
 
 // Quiet window for coalescing mark-as-read RPCs (see markReadCoalescer below).
@@ -169,6 +172,11 @@ export function Chats() {
   // itself — state, contacts query, submit — is components/chats/StatusComposeModal.
   const [composeOpen, setComposeOpen] = useState<boolean>(false);
 
+  // --- AI Assistant & New Chat modals ---
+  const [showAiModal, setShowAiModal] = useState<boolean>(false);
+  const [showNewChatModal, setShowNewChatModal] = useState<boolean>(false);
+  const [aiConfigCounter, setAiConfigCounter] = useState<number>(0);
+
   const {
     data: messages = [],
     isLoading: loadingMessages,
@@ -176,6 +184,11 @@ export function Chats() {
   } = useChatMessages(selectedSessionId, activeChat?.id ?? null);
   const { appendMessage, updateMessage } = useChatMessagesActions();
   const queryClient = useQueryClient();
+
+  const currentChatAiConfig = useMemo(() => {
+    if (!selectedSessionId || !activeChat) return null;
+    return getEffectiveAiConfig(selectedSessionId, activeChat.id);
+  }, [selectedSessionId, activeChat?.id, aiConfigCounter]);
 
   // Lightbox state for media viewer
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -371,6 +384,30 @@ export function Chats() {
         if (!newMsg.fromMe) onMessageAppended('incoming');
       }
 
+      // Auto-Pilot AI Assistant: if enabled for this chat, generate and send an automated reply
+      if (!newMsg.fromMe && event.sessionId) {
+        const aiConf = getEffectiveAiConfig(event.sessionId, newMsg.chatId);
+        if (aiConf.enabled && aiConf.autoPilot) {
+          setTimeout(async () => {
+            try {
+              if (!isWithinBusinessHours(aiConf.schedule)) {
+                if (aiConf.schedule?.outOfHoursMessage) {
+                  await messageApi.sendText(event.sessionId, newMsg.chatId, aiConf.schedule.outOfHoursMessage);
+                }
+                return;
+              }
+              const currentHistory = queryClient.getQueryData<ChatMessageView[]>(messagesQueryKey(event.sessionId, newMsg.chatId)) || [mappedMessage];
+              const aiReply = await generateAiChatResponse(currentHistory, aiConf);
+              if (aiReply && aiReply.trim()) {
+                await messageApi.sendText(event.sessionId, newMsg.chatId, aiReply.trim());
+              }
+            } catch (err) {
+              console.error('[AI Assistant Auto-Pilot error]', err);
+            }
+          }, 1200);
+        }
+      }
+
       // Update sidebar chat list. The refetch is REPORTED by the reducer and fired below, never from
       // inside the updater: React double-invokes updaters under StrictMode, so a side effect in there
       // ran twice for every message arriving in a chat the sidebar does not have.
@@ -388,7 +425,7 @@ export function Chats() {
         void loadChats(selectedSessionId);
       }
     },
-    [selectedSessionId, activeChat, loadChats, markChatRead, appendMessage, onMessageAppended, t],
+    [selectedSessionId, activeChat, loadChats, markChatRead, appendMessage, onMessageAppended, queryClient, t],
   );
 
   const handleIncomingMessageAck = useCallback(
@@ -851,6 +888,7 @@ export function Chats() {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             onComposeStatus={() => setComposeOpen(true)}
+            onNewChat={() => setShowNewChatModal(true)}
             formatChatTime={formatChatTime}
             chatsTab={{
               loading: loadingChats,
@@ -914,6 +952,37 @@ export function Chats() {
                       {activeChat.id}
                     </span>
                   </div>
+
+                  {/* AI Assistant role / settings button in room header */}
+                  <div className="room-ai-action" style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAiModal(true)}
+                      className={`btn-ai-status-badge ${currentChatAiConfig?.enabled ? 'active' : ''}`}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        borderRadius: '20px',
+                        border: currentChatAiConfig?.enabled ? '1px solid #8b5cf6' : '1px solid var(--border)',
+                        background: currentChatAiConfig?.enabled ? 'rgba(139, 92, 246, 0.12)' : 'var(--bg-secondary)',
+                        color: currentChatAiConfig?.enabled ? '#7c3aed' : 'var(--text-secondary)',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        fontWeight: 600,
+                        transition: 'all 0.2s',
+                      }}
+                      title="Configurar Rol, Contexto y Horario del Asistente IA para este chat"
+                    >
+                      <Bot size={15} />
+                      <span>
+                        {currentChatAiConfig?.enabled
+                          ? `${AI_ROLES[currentChatAiConfig.role]?.name || 'Asistente IA'}${currentChatAiConfig.autoPilot ? ' • Auto' : ''}`
+                          : 'Asistente IA'}
+                      </span>
+                    </button>
+                  </div>
                 </header>
 
                 {/* Messages body (list, media, reactions, scroll-to-bottom) — components/chats/ChatThread. */}
@@ -939,6 +1008,7 @@ export function Chats() {
                 <ChatComposer
                   selectedSessionId={selectedSessionId}
                   activeChat={activeChat}
+                  messages={messages}
                   replyingTo={replyingTo}
                   setReplyingTo={setReplyingTo}
                   onMessageAppended={onMessageAppended}
@@ -1059,6 +1129,44 @@ export function Chats() {
           sessionId={selectedSessionId}
           onClose={() => setComposeOpen(false)}
           onPosted={() => statusesQuery.refetch()}
+        />
+      )}
+
+      {showAiModal && activeChat && selectedSessionId && (
+        <AiAssistantModal
+          sessionId={selectedSessionId}
+          chatId={activeChat.id}
+          chatName={activeChat.name || activeChat.id.split('@')[0]}
+          onClose={() => {
+            setShowAiModal(false);
+            setAiConfigCounter(c => c + 1);
+          }}
+        />
+      )}
+
+      {showNewChatModal && selectedSessionId && (
+        <NewChatModal
+          sessionId={selectedSessionId}
+          onClose={() => setShowNewChatModal(false)}
+          onChatCreated={newChatId => {
+            setShowNewChatModal(false);
+            void loadChats(selectedSessionId).then(() => {
+              const found = chats.find(c => c.id === newChatId);
+              if (found) {
+                setActiveChat(found);
+              } else {
+                setActiveChat({
+                  id: newChatId,
+                  name: newChatId.split('@')[0],
+                  kind: 'individual',
+                  timestamp: Math.floor(Date.now() / 1000),
+                  unreadCount: 0,
+                  isGroup: false,
+                });
+              }
+              setAiConfigCounter(c => c + 1);
+            });
+          }}
         />
       )}
     </div>

@@ -14,6 +14,7 @@ import {
   Filter,
   Skull,
   Unlink,
+  Bot,
 } from 'lucide-react';
 import { sessionApi, type Session, type SessionConfig, type AccountRestriction } from '../services/api';
 import { queryKeys } from '../hooks/queries';
@@ -26,7 +27,7 @@ import {
   replaceSession,
 } from '../utils/sessionActions';
 import { invalidateSessionQueries, reconcileSessionCache } from '../utils/sessionMutation';
-import { canCreateSession, filterSessions, isValidPairingPhone, sessionNameIssues } from '../utils/sessionForm';
+import { filterSessions, isValidPairingPhone } from '../utils/sessionForm';
 import { useToast } from '../hooks/useToast';
 import { useRole } from '../hooks/useRole';
 import { useSessionPairing } from '../hooks/useSessionPairing';
@@ -36,6 +37,9 @@ import { useSessionCreateForm } from '../hooks/useSessionCreateForm';
 import { PageHeader } from '../components/PageHeader';
 import { CustomSelect } from '../components/CustomSelect';
 import { Modal } from '../components/Modal';
+import CreateSessionModal from '../components/sessions/CreateSessionModal';
+import SessionAiModal from '../components/sessions/SessionAiModal';
+import { getSessionAiConfig, AI_ROLES } from '../services/aiAssistant';
 import './Sessions.css';
 
 /**
@@ -73,6 +77,9 @@ export function Sessions() {
   // fetched per session when the detail modal opens rather than N times to render the list.
   const [sessionConfig, setSessionConfig] = useState<SessionConfig | null>(null);
   const [savingConfig, setSavingConfig] = useState(false);
+
+  const [aiSessionTarget, setAiSessionTarget] = useState<Session | null>(null);
+  const [, setAiRefreshCounter] = useState<number>(0);
 
   const fetchSessions = useCallback(async (): Promise<Session[]> => {
     try {
@@ -125,7 +132,7 @@ export function Sessions() {
     dismissQrForSession,
   } = useSessionPairing({ sessions, sessionsRef, reloadSessions: fetchSessions });
 
-  const { showCreateModal, setShowCreateModal, newSessionName, setNewSessionName, creating, handleCreate } =
+  const { showCreateModal, setShowCreateModal, setNewSessionName, creating, handleCreate } =
     useSessionCreateForm({
       onCreated: newSession => {
         // Functional append: never capture a stale `sessions` (a WS or fetch between the await and the
@@ -372,12 +379,16 @@ export function Sessions() {
     return new Date(date).toLocaleDateString();
   };
 
-  const formatStatus = (status: string) => t(`sessionStatus.${status}`, { defaultValue: status });
+  const formatStatus = (status: string) => {
+    if (status === 'created' || status === 'ready') return 'Conectado';
+    if (status === 'initializing') return 'Iniciando...';
+    if (status === 'qr_ready') return 'Esperando QR';
+    if (status === 'disconnected') return 'Listo / En espera';
+    return t(`sessionStatus.${status}`, { defaultValue: status });
+  };
 
   const filteredSessions = filterSessions(sessions, searchQuery, statusFilter);
   const existingSessionNames = sessions.map(s => s.name);
-  // Empty is a disabled button, not a message: the form stays quiet until the user types something.
-  const nameIssues = newSessionName ? sessionNameIssues(newSessionName, existingSessionNames) : [];
 
   if (loading) {
     return (
@@ -445,49 +456,17 @@ export function Sessions() {
         </div>
       )}
 
-      {showCreateModal && (
-        <Modal
-          open
-          onClose={() => setShowCreateModal(false)}
-          title={t('sessions.create.title')}
-          closeLabel={t('common.close')}
-          footer={
-            <>
-              <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>
-                {t('common.cancel')}
-              </button>
-              <button
-                className="btn-primary"
-                onClick={handleCreate}
-                disabled={creating || !canCreateSession(newSessionName, existingSessionNames)}
-              >
-                {creating ? <Loader2 className="animate-spin" size={16} /> : t('common.create')}
-              </button>
-            </>
-          }
-        >
-          <label htmlFor="sess-1">{t('sessions.create.label')}</label>
-          <input
-            id="sess-1"
-            type="text"
-            placeholder={t('sessions.create.placeholder')}
-            value={newSessionName}
-            onChange={e => {
-              const value = e.target.value.toLowerCase().replace(/\s+/g, '-');
-              setNewSessionName(value);
-            }}
-            onKeyDown={e => e.key === 'Enter' && handleCreate()}
-          />
-          <p className="input-hint">
-            <Trans i18nKey="sessions.create.hint" components={{ code: <code /> }} />
-          </p>
-          {nameIssues.includes('format') && <p className="input-error">{t('sessions.create.invalidChars')}</p>}
-          {nameIssues.includes('too-long') && (
-            <p className="input-error">{t('sessions.create.tooLong', { length: newSessionName.length })}</p>
-          )}
-          {nameIssues.includes('duplicate') && <p className="input-error">{t('sessions.create.duplicate')}</p>}
-        </Modal>
-      )}
+      {/* New Session + AI Bot Configuration Modal */}
+      <CreateSessionModal
+        isOpen={showCreateModal}
+        onClose={() => setShowCreateModal(false)}
+        existingSessionNames={existingSessionNames}
+        isCreating={creating}
+        onSessionCreated={async (name: string) => {
+          setNewSessionName(name);
+          await handleCreate();
+        }}
+      />
 
       {qrData && (
         <Modal
@@ -651,7 +630,9 @@ export function Sessions() {
             </div>
             <div className="detail-item">
               <span className="detail-label">{t('sessions.details.status')}</span>
-              <span className={`status-badge ${selectedSession.status}`}>{formatStatus(selectedSession.status)}</span>
+              <span className={`status-badge ${selectedSession.status === 'created' || selectedSession.status === 'ready' ? 'connected' : selectedSession.status}`}>
+                {formatStatus(selectedSession.status)}
+              </span>
             </div>
             <div className="detail-item">
               <span className="detail-label">{t('sessions.details.sessionId')}</span>
@@ -786,6 +767,19 @@ export function Sessions() {
         </Modal>
       )}
 
+      {/* Session AI Configuration Modal */}
+      {aiSessionTarget && (
+        <SessionAiModal
+          isOpen={Boolean(aiSessionTarget)}
+          sessionId={aiSessionTarget.id}
+          sessionName={aiSessionTarget.name}
+          onClose={() => {
+            setAiSessionTarget(null);
+            setAiRefreshCounter(c => c + 1);
+          }}
+        />
+      )}
+
       <div className="sessions-grid">
         {filteredSessions.length === 0 ? (
           <div className="empty-state">
@@ -794,103 +788,131 @@ export function Sessions() {
             <p>{t('sessions.empty.description')}</p>
           </div>
         ) : (
-          filteredSessions.map(session => (
-            <div key={session.id} className="session-card">
-              <div className="card-header">
-                <h3 title={session.name}>{session.name}</h3>
-                <span className={`status-pill ${session.status}`}>{formatStatus(session.status)}</span>
-              </div>
+          filteredSessions.map(session => {
+            const sessionAi = getSessionAiConfig(session.id);
+            return (
+              <div key={session.id} className="session-card">
+                <div className="card-header">
+                  <h3 title={session.name}>{session.name}</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    {sessionAi.enabled && (
+                      <span
+                        className="status-pill"
+                        style={{
+                          background: 'rgba(139, 92, 246, 0.15)',
+                          color: '#8b5cf6',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          fontSize: '11px',
+                          fontWeight: 600,
+                        }}
+                        title={`Bot IA: ${sessionAi.role === 'custom' && sessionAi.customRoleName ? sessionAi.customRoleName : AI_ROLES[sessionAi.role]?.name || 'Activo'}${sessionAi.autoPilot ? ' • Auto' : ''}`}
+                      >
+                        🤖 {sessionAi.role === 'custom' && sessionAi.customRoleName ? sessionAi.customRoleName : AI_ROLES[sessionAi.role]?.name || 'IA'}
+                      </span>
+                    )}
+                    <span className={`status-pill ${session.status === 'created' ? 'ready' : session.status}`}>
+                      {formatStatus(session.status)}
+                    </span>
+                  </div>
+                </div>
 
-              {session.status === 'initializing' || session.status === 'qr_ready' ? (
-                <div className="qr-placeholder">
-                  <QrCode size={80} className="qr-icon" />
-                  <p>{session.status === 'qr_ready' ? t('sessions.qr.scanToConnect') : t('sessions.qr.preparing')}</p>
+                {session.status === 'initializing' || session.status === 'qr_ready' ? (
+                  <div className="qr-placeholder">
+                    <QrCode size={80} className="qr-icon" />
+                    <p>{session.status === 'qr_ready' ? t('sessions.qr.scanToConnect') : t('sessions.qr.preparing')}</p>
+                    <button
+                      className="btn-sm"
+                      onClick={() => handleShowQR(session.id)}
+                      disabled={session.status !== 'qr_ready'}
+                    >
+                      {session.status === 'qr_ready' ? t('sessions.qr.showQr') : t('sessions.qr.loading')}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="session-info">
+                    <div className="info-row">
+                      <span className="info-label">{t('sessions.card.phone')}</span>
+                      <span className="info-value">{session.phone || '—'}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">{t('sessions.card.sessionId')}</span>
+                      <span className="info-value mono">{session.id.substring(0, 12)}</span>
+                    </div>
+                    <div className="info-row">
+                      <span className="info-label">{t('sessions.card.lastActive')}</span>
+                      <span className="info-value">{formatLastActive(session.lastActive)}</span>
+                    </div>
+                    {(session.status === 'failed' || session.status === 'action_required') && session.lastError ? (
+                      <div className="info-row session-error">
+                        <span className="info-label">{t('sessions.card.error')}</span>
+                        <span className="info-value error-text" title={session.lastError}>
+                          {session.lastError}
+                        </span>
+                      </div>
+                    ) : null}
+                    {session.restriction ? (
+                      <div className="info-row session-restriction">
+                        <span className="info-label">{t('sessions.card.restriction')}</span>
+                        <span className="info-value restriction-text" title={restrictionTitle(session.restriction, t)}>
+                          {t(`sessions.restriction.${session.restriction.kind}`)}
+                        </span>
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
+                <div className="card-actions">
                   <button
-                    className="btn-sm"
-                    onClick={() => handleShowQR(session.id)}
-                    disabled={session.status !== 'qr_ready'}
+                    className="btn-action"
+                    onClick={() => setAiSessionTarget(session)}
+                    title="Configurar Rol y Horario del Asistente IA para este bot"
+                    style={{ color: '#8b5cf6' }}
                   >
-                    {session.status === 'qr_ready' ? t('sessions.qr.showQr') : t('sessions.qr.loading')}
+                    <Bot size={16} />
+                    Bot IA
                   </button>
-                </div>
-              ) : (
-                <div className="session-info">
-                  <div className="info-row">
-                    <span className="info-label">{t('sessions.card.phone')}</span>
-                    <span className="info-value">{session.phone || '—'}</span>
-                  </div>
-                  <div className="info-row">
-                    <span className="info-label">{t('sessions.card.sessionId')}</span>
-                    <span className="info-value mono">{session.id.substring(0, 12)}</span>
-                  </div>
-                  <div className="info-row">
-                    <span className="info-label">{t('sessions.card.lastActive')}</span>
-                    <span className="info-value">{formatLastActive(session.lastActive)}</span>
-                  </div>
-                  {(session.status === 'failed' || session.status === 'action_required') && session.lastError ? (
-                    <div className="info-row session-error">
-                      <span className="info-label">{t('sessions.card.error')}</span>
-                      <span className="info-value error-text" title={session.lastError}>
-                        {session.lastError}
-                      </span>
-                    </div>
+                  <button className="btn-action" onClick={() => setSelectedSession(session)}>
+                    <Eye size={16} />
+                    {t('sessions.actions.view')}
+                  </button>
+                  {canWrite && isSessionStarted(session) ? (
+                    <button className="btn-action" onClick={() => handleStop(session.id)}>
+                      <Square size={16} />
+                      {t('sessions.actions.stop')}
+                    </button>
+                  ) : canWrite && (session.status === 'created' || session.status === 'disconnected') ? (
+                    <button className="btn-action" onClick={() => handleStart(session.id)}>
+                      <Play size={16} />
+                      {t('sessions.actions.start')}
+                    </button>
+                  ) : canWrite ? (
+                    <button className="btn-action" onClick={() => handleStart(session.id)}>
+                      <RefreshCw size={16} />
+                      {t('sessions.actions.reconnect')}
+                    </button>
                   ) : null}
-                  {/* Not gated on status, unlike the error above: a reachout timelock applies to a
-                      session that is perfectly `ready`, and hiding it behind a status would make it
-                      invisible exactly when the operator needs it. */}
-                  {session.restriction ? (
-                    <div className="info-row session-restriction">
-                      <span className="info-label">{t('sessions.card.restriction')}</span>
-                      <span className="info-value restriction-text" title={restrictionTitle(session.restriction, t)}>
-                        {t(`sessions.restriction.${session.restriction.kind}`)}
-                      </span>
-                    </div>
-                  ) : null}
+                  {canUnlinkSession(session, canWrite) && (
+                    <button className="btn-action danger" onClick={() => setUnlinkConfirmId(session.id)}>
+                      <Unlink size={16} />
+                      {t('sessions.actions.unlink')}
+                    </button>
+                  )}
+                  {canWrite && (
+                    <button className="btn-action danger" onClick={() => setDeleteConfirmId(session.id)}>
+                      <Trash2 size={16} />
+                      {t('sessions.actions.delete')}
+                    </button>
+                  )}
+                  {canForceKillSession(session, canWrite) && (
+                    <button className="btn-action danger" onClick={() => setKillConfirmId(session.id)}>
+                      <Skull size={16} />
+                      {t('sessions.actions.killStuck')}
+                    </button>
+                  )}
                 </div>
-              )}
-
-              <div className="card-actions">
-                <button className="btn-action" onClick={() => setSelectedSession(session)}>
-                  <Eye size={16} />
-                  {t('sessions.actions.view')}
-                </button>
-                {canWrite && isSessionStarted(session) ? (
-                  <button className="btn-action" onClick={() => handleStop(session.id)}>
-                    <Square size={16} />
-                    {t('sessions.actions.stop')}
-                  </button>
-                ) : canWrite && (session.status === 'created' || session.status === 'disconnected') ? (
-                  <button className="btn-action" onClick={() => handleStart(session.id)}>
-                    <Play size={16} />
-                    {t('sessions.actions.start')}
-                  </button>
-                ) : canWrite ? (
-                  <button className="btn-action" onClick={() => handleStart(session.id)}>
-                    <RefreshCw size={16} />
-                    {t('sessions.actions.reconnect')}
-                  </button>
-                ) : null}
-                {canUnlinkSession(session, canWrite) && (
-                  <button className="btn-action danger" onClick={() => setUnlinkConfirmId(session.id)}>
-                    <Unlink size={16} />
-                    {t('sessions.actions.unlink')}
-                  </button>
-                )}
-                {canWrite && (
-                  <button className="btn-action danger" onClick={() => setDeleteConfirmId(session.id)}>
-                    <Trash2 size={16} />
-                    {t('sessions.actions.delete')}
-                  </button>
-                )}
-                {canForceKillSession(session, canWrite) && (
-                  <button className="btn-action danger" onClick={() => setKillConfirmId(session.id)}>
-                    <Skull size={16} />
-                    {t('sessions.actions.killStuck')}
-                  </button>
-                )}
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

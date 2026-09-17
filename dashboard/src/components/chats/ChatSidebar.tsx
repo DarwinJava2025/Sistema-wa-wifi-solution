@@ -15,6 +15,7 @@ interface ChatSidebarProps {
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   onComposeStatus: () => void;
+  onNewChat?: () => void;
   formatChatTime: (timestamp?: number) => string;
   chatsTab: {
     loading: boolean;
@@ -51,6 +52,7 @@ function ChatSidebar({
   searchQuery,
   onSearchQueryChange,
   onComposeStatus,
+  onNewChat,
   formatChatTime,
   chatsTab,
   channelsTab,
@@ -168,6 +170,14 @@ function ChatSidebar({
           <button type="button" className="btn-primary status-compose-trigger" onClick={onComposeStatus}>
             <Plus size={16} />
             {t('chats.status.compose')}
+          </button>
+        )}
+
+        {/* Start a new chat / AI assistant conversation */}
+        {activeTab === 'chats' && onNewChat && (
+          <button type="button" className="btn-primary new-chat-trigger" onClick={onNewChat} style={{ width: '100%', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', padding: '0.625rem', borderRadius: '8px', fontWeight: 600 }}>
+            <Plus size={16} />
+            {t('chats.newChat', 'Nuevo Chat / Asistente')}
           </button>
         )}
       </div>

@@ -128,6 +128,7 @@ export function createSwaggerConfig(): Omit<OpenAPIObject, 'paths'> {
       .addSecurityRequirements(API_KEY_SECURITY_SCHEME)
       .addTag('sessions', 'WhatsApp session management')
       .addTag('messages', 'Send and manage messages')
+      .addTag('broadcast', 'Difusión masiva de mensajes por grupos segmentados y chatbots con anti-bloqueo')
       .addTag('webhooks', 'Webhook configuration')
       .addTag('contacts', 'Contact management')
       .addTag('groups', 'Group management')

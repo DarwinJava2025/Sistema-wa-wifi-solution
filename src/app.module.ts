@@ -45,6 +45,7 @@ import { PluginsApiModule } from './modules/plugins/plugins.module';
 import { AgentToolsModule } from './core/agent-tools/agent-tools.module';
 import { IntegrationModule } from './modules/integration/integration.module';
 import { SearchModule } from './modules/search/search.module';
+import { BroadcastModule } from './modules/broadcast/broadcast.module';
 import { SqlitePermissionsBoot } from './database/sqlite-file-permissions';
 
 // Only import QueueModule if explicitly enabled to avoid Redis connection errors
@@ -293,6 +294,7 @@ if (dashboardServingEnabled && dashboardBuildPresent) {
     EngineModule,
     SessionModule,
     MessageModule,
+    BroadcastModule,
     TemplateModule,
     WebhookModule,
     HealthModule,

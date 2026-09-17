@@ -63,7 +63,9 @@
     "infrastructure": "Infraestructura",
     "plugins": "Plugins",
     "logs": "Registros",
-    "templates": "Plantillas"
+    "templates": "Plantillas",
+    "scheduledMessages": "Mensajes programados",
+    "groupBroadcasts": "Difusión por grupos"
   },
   "chats": {
     "media": {
@@ -612,6 +614,11 @@
     "send": "Enviar mensaje",
     "sending": "Enviando...",
     "viewOnly": "Solo lectura",
+    "curlPreview": "Comando cURL",
+    "livePreview": "En tiempo real",
+    "copyCurl": "Copiar cURL",
+    "copied": "¡Copiado!",
+    "copy": "Copiar",
     "responseEmpty": "Envía un mensaje para ver la respuesta de la API",
     "successLabel": "Éxito",
     "failedLabel": "Fallido",

@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef, type ChangeEvent } from 'react';
+import { useState, useEffect, useRef, useMemo, type ChangeEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Send, CheckCircle, XCircle, Loader2, Upload, X, Plus } from 'lucide-react';
+import { Send, CheckCircle, XCircle, Loader2, Upload, X, Plus, Copy, Check } from 'lucide-react';
 import {
   messageApi,
   contactApi,
@@ -13,6 +13,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import { useRole } from '../hooks/useRole';
 import { useSessionsQuery, useSessionGroupsQuery } from '../hooks/queries';
 import { parseBulkRecipients, BULK_MAX_RECIPIENTS } from '../utils/bulkRecipients';
+import { copyToClipboard } from '../utils/clipboard';
 import { PageHeader } from '../components/PageHeader';
 import './MessageTester.css';
 
@@ -270,6 +271,158 @@ export function MessageTester() {
     !session ||
     !formValid ||
     (messageType !== 'bulk' && (recipientType === 'group' ? !selectedGroup : !recipient));
+
+  const [copiedCurl, setCopiedCurl] = useState(false);
+
+  const curlCommand = useMemo(() => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:2785';
+    const apiKey =
+      (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('openwa_api_key')) || 'YOUR_API_KEY';
+    const sessionId = session || ':sessionId';
+
+    let targetChatId =
+      recipientType === 'group' ? selectedGroup || ':groupId@g.us' : recipient.trim() || '+1234567890';
+    if (recipientType !== 'group' && targetChatId !== '+1234567890' && !targetChatId.includes('@')) {
+      const cleanNumber = targetChatId.replace(/[^0-9]/g, '');
+      targetChatId = cleanNumber ? `${cleanNumber}@c.us` : targetChatId;
+    }
+
+    let endpoint = '';
+    let payload: Record<string, unknown> = {};
+
+    switch (messageType) {
+      case 'text':
+        endpoint = `/api/sessions/${sessionId}/messages/send-text`;
+        payload = { chatId: targetChatId, text: content || 'Hello from OpenWA!' };
+        break;
+      case 'image':
+      case 'video':
+      case 'audio':
+      case 'document': {
+        endpoint = `/api/sessions/${sessionId}/messages/send-${messageType}`;
+        const mediaPayload = mediaFile
+          ? {
+              mimetype: mediaFile.mimetype,
+              base64:
+                mediaFile.base64.length > 50
+                  ? `${mediaFile.base64.slice(0, 30)}...[${mediaFile.filename}]...`
+                  : mediaFile.base64,
+            }
+          : { url: mediaUrl || 'https://example.com/file.jpg' };
+        payload = {
+          chatId: targetChatId,
+          ...mediaPayload,
+          ...(content && (messageType === 'image' || messageType === 'video') ? { caption: content } : {}),
+          ...(content && messageType === 'document' ? { filename: content } : {}),
+        };
+        break;
+      }
+      case 'sticker': {
+        endpoint = `/api/sessions/${sessionId}/messages/send-sticker`;
+        const mediaPayload = mediaFile
+          ? {
+              mimetype: mediaFile.mimetype,
+              base64:
+                mediaFile.base64.length > 50
+                  ? `${mediaFile.base64.slice(0, 30)}...[${mediaFile.filename}]...`
+                  : mediaFile.base64,
+            }
+          : { url: mediaUrl || 'https://example.com/sticker.webp' };
+        payload = { chatId: targetChatId, ...mediaPayload };
+        break;
+      }
+      case 'location': {
+        endpoint = `/api/sessions/${sessionId}/messages/send-location`;
+        payload = {
+          chatId: targetChatId,
+          latitude: !Number.isNaN(lat) ? lat : -6.2088,
+          longitude: !Number.isNaN(lng) ? lng : 106.8456,
+          ...(locationDescription.trim() ? { description: locationDescription.trim() } : {}),
+          ...(locationAddress.trim() ? { address: locationAddress.trim() } : {}),
+        };
+        break;
+      }
+      case 'contact': {
+        endpoint = `/api/sessions/${sessionId}/messages/send-contact`;
+        payload = {
+          chatId: targetChatId,
+          contactName: contactName.trim() || 'Jane Doe',
+          contactNumber: contactNumber.trim() || '+1234567890',
+        };
+        break;
+      }
+      case 'poll': {
+        endpoint = `/api/sessions/${sessionId}/messages/send-poll`;
+        payload = {
+          chatId: targetChatId,
+          name: pollQuestion.trim() || 'Sample Question?',
+          options: pollOptionsFilled.length >= 2 ? pollOptionsFilled : ['Option 1', 'Option 2'],
+          ...(allowMultipleAnswers ? { allowMultipleAnswers: true } : {}),
+        };
+        break;
+      }
+      case 'forward': {
+        endpoint = `/api/sessions/${sessionId}/messages/forward`;
+        payload = {
+          fromChatId: forwardFrom.trim() || targetChatId,
+          toChatId: forwardTo.trim() || 'TARGET_CHAT_ID@c.us',
+          messageId: forwardMessageId.trim() || 'MESSAGE_ID',
+        };
+        break;
+      }
+      case 'bulk': {
+        endpoint = `/api/sessions/${sessionId}/messages/send-bulk`;
+        const recipients =
+          bulkRecipientList.length > 0 ? bulkRecipientList : ['+1234567890@c.us', '+0987654321@c.us'];
+        payload = {
+          messages: recipients.map(r => ({
+            chatId: r,
+            type: 'text',
+            content: { text: content || 'Bulk message content' },
+          })),
+          ...(delayMs !== undefined ? { options: { delayBetweenMessages: delayMs } } : {}),
+        };
+        break;
+      }
+    }
+
+    const formattedBody = JSON.stringify(payload, null, 2);
+    return `curl -X POST "${origin}${endpoint}" \\
+  -H "Content-Type: application/json" \\
+  -H "X-API-Key: ${apiKey}" \\
+  -d '${formattedBody.replace(/'/g, "'\\''")}'`;
+  }, [
+    session,
+    recipientType,
+    selectedGroup,
+    recipient,
+    messageType,
+    content,
+    mediaFile,
+    mediaUrl,
+    lat,
+    lng,
+    locationDescription,
+    locationAddress,
+    contactName,
+    contactNumber,
+    pollQuestion,
+    pollOptionsFilled,
+    allowMultipleAnswers,
+    forwardFrom,
+    forwardTo,
+    forwardMessageId,
+    bulkRecipientList,
+    delayMs,
+  ]);
+
+  const handleCopyCurl = async () => {
+    const ok = await copyToClipboard(curlCommand);
+    if (ok) {
+      setCopiedCurl(true);
+      setTimeout(() => setCopiedCurl(false), 2000);
+    }
+  };
 
   const handleSend = async () => {
     const targetId = recipientType === 'group' ? selectedGroup : recipient;
@@ -854,6 +1007,33 @@ export function MessageTester() {
         </div>
 
         <div className="response-panel">
+          <div className="curl-section">
+            <div className="curl-header">
+              <div className="curl-title-wrap">
+                <h2 className="eyebrow">{t('messageTester.curlPreview')}</h2>
+                <span className="curl-live-badge">
+                  <span className="curl-live-pulse" />
+                  {t('messageTester.livePreview')}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="copy-curl-btn"
+                onClick={handleCopyCurl}
+                aria-label={t('messageTester.copyCurl')}
+                title={t('messageTester.copyCurl')}
+              >
+                {copiedCurl ? <Check size={14} /> : <Copy size={14} />}
+                <span>{copiedCurl ? t('messageTester.copied') : t('messageTester.copyCurl')}</span>
+              </button>
+            </div>
+            <div className="curl-code-wrapper">
+              <pre><code>{curlCommand}</code></pre>
+            </div>
+          </div>
+
+          <div className="response-divider" />
+
           <h2 className="eyebrow">{t('messageTester.responseTitle')}</h2>
 
           {response ? (

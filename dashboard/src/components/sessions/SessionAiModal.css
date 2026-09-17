@@ -1,0 +1,47 @@
+/* ==========================================================================
+   Session AI Modal - Clean Unified Theme Styling
+   ========================================================================== */
+
+.session-ai-modal-unified,
+.modal.session-ai-modal-unified {
+  width: 96vw !important;
+  max-width: 1360px !important;
+  height: 88vh !important;
+  max-height: 88vh !important;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-white, #ffffff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 16px;
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  animation: modalFadeScale 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.session-ai-modal-unified.is-fullscreen,
+.modal.session-ai-modal-unified.is-fullscreen {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  max-width: 100vw !important;
+  height: 100vh !important;
+  max-height: 100vh !important;
+  border-radius: 0 !important;
+  border: none !important;
+  margin: 0 !important;
+  z-index: 99999 !important;
+}
+
+.modal-switches-bar {
+  margin: 1rem 1.5rem 0.5rem 1.5rem;
+  border-radius: 10px;
+}
+
+.session-ai-modal-body {
+  padding: 1.25rem 1.5rem 1.5rem 1.5rem;
+  overflow-y: auto;
+  flex: 1 1 auto;
+}

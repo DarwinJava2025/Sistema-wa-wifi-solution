@@ -970,6 +970,14 @@ export const messageApi = {
       method: 'POST',
       body: JSON.stringify({ chatId, text }),
     }),
+  sendTemplate: (
+    sessionId: string,
+    data: { chatId: string; templateName?: string; templateId?: string; vars?: Record<string, string> },
+  ) =>
+    request<MessageResponse>(`/sessions/${sessionId}/messages/send-template`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   sendMedia: (
     sessionId: string,
     chatId: string,

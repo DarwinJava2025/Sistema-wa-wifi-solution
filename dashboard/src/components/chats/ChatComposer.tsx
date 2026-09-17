@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Paperclip, Send, Smile, X } from 'lucide-react';
+import { Loader2, Paperclip, Send, Smile, Sparkles, X } from 'lucide-react';
 import { messageApi, type Chat, type MessageType } from '../../services/api';
 import { mergeOrAppend, type ChatMessageView } from '../../utils/chatMessages';
 import { promoteChatWithSnippet } from '../../utils/chatList';
@@ -9,6 +9,7 @@ import { buildMediaSendPayload, buildOptimisticMetadata, quotedIdOf } from '../.
 import { messagesQueryKey, useChatMessagesActions } from '../../hooks/useChatMessages';
 import { useRole } from '../../hooks/useRole';
 import { useToast } from '../../hooks/useToast';
+import { getChatAiConfig, generateAiChatResponse } from '../../services/aiAssistant';
 import type { ScrollDirection } from '../../utils/scrollDecision';
 
 // Map an attachment MIME type to the neutral MessageType for the optimistic outgoing bubble, so the
@@ -36,6 +37,7 @@ export interface StagedAttachment {
 interface ChatComposerProps {
   selectedSessionId: string;
   activeChat: Chat;
+  messages?: ChatMessageView[];
   replyingTo: ChatMessageView | null;
   setReplyingTo: Dispatch<SetStateAction<ChatMessageView | null>>;
   onMessageAppended: (direction: ScrollDirection) => void;
@@ -55,6 +57,7 @@ interface ChatComposerProps {
 function ChatComposer({
   selectedSessionId,
   activeChat,
+  messages,
   replyingTo,
   setReplyingTo,
   onMessageAppended,
@@ -73,6 +76,21 @@ function ChatComposer({
   const queryClient = useQueryClient();
 
   const [sending, setSending] = useState<boolean>(false);
+  const [generatingAi, setGeneratingAi] = useState<boolean>(false);
+
+  const handleGenerateAi = async () => {
+    if (!selectedSessionId || !activeChat || generatingAi) return;
+    setGeneratingAi(true);
+    try {
+      const config = getChatAiConfig(selectedSessionId, activeChat.id);
+      const generated = await generateAiChatResponse(messages || [], config);
+      setMessageInput(generated);
+    } catch (err) {
+      console.error('Error generating AI response:', err);
+    } finally {
+      setGeneratingAi(false);
+    }
+  };
 
   const [showEmojiPicker, setShowEmojiPicker] = useState<boolean>(false);
   // Monotonic token invalidating an in-flight attachment FileReader: picking a second file (or
@@ -340,6 +358,17 @@ function ChatComposer({
             title={t('chats.emojiTitle')}
           >
             <Smile size={20} />
+          </button>
+
+          <button
+            type="button"
+            onClick={handleGenerateAi}
+            disabled={!canWrite || sending || generatingAi}
+            className="btn-input-accessory"
+            style={{ color: '#8b5cf6' }}
+            title="Generar respuesta inteligente con Asistente IA"
+          >
+            {generatingAi ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />}
           </button>
 
           <input
