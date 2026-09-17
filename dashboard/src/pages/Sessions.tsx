@@ -139,6 +139,10 @@ export function Sessions() {
         // setState would otherwise drop a row). Then invalidate the prefix so stats/groups/chats refresh.
         setSessions(current => [...current, newSession]);
         void invalidateSessionQueries(queryClient, queryKeys.sessions);
+        // Automatically start the session engine so the QR code modal is shown immediately
+        setTimeout(() => {
+          void handleStart(newSession.id);
+        }, 150);
       },
       onFailed: msg => setError(msg),
     });
@@ -380,10 +384,13 @@ export function Sessions() {
   };
 
   const formatStatus = (status: string) => {
-    if (status === 'created' || status === 'ready') return 'Conectado';
-    if (status === 'initializing') return 'Iniciando...';
+    if (status === 'created') return 'Listo para iniciar';
+    if (status === 'ready') return 'Conectado';
+    if (status === 'initializing') return 'Iniciando WhatsApp...';
     if (status === 'qr_ready') return 'Esperando QR';
-    if (status === 'disconnected') return 'Listo / En espera';
+    if (status === 'disconnected') return 'Desconectado';
+    if (status === 'failed') return 'Falló al iniciar';
+    if (status === 'action_required') return 'Acción requerida';
     return t(`sessionStatus.${status}`, { defaultValue: status });
   };
 
@@ -629,7 +636,7 @@ export function Sessions() {
             </div>
             <div className="detail-item">
               <span className="detail-label">{t('sessions.details.status')}</span>
-              <span className={`status-badge ${selectedSession.status === 'created' || selectedSession.status === 'ready' ? 'connected' : selectedSession.status}`}>
+              <span className={`status-badge ${selectedSession.status === 'ready' ? 'connected' : selectedSession.status}`}>
                 {formatStatus(selectedSession.status)}
               </span>
             </div>
@@ -809,7 +816,7 @@ export function Sessions() {
                         🤖 {sessionAi.role === 'custom' && sessionAi.customRoleName ? sessionAi.customRoleName : AI_ROLES[sessionAi.role]?.name || 'IA'}
                       </span>
                     )}
-                    <span className={`status-pill ${session.status === 'created' ? 'ready' : session.status}`}>
+                    <span className={`status-pill ${session.status === 'ready' ? 'connected' : session.status}`}>
                       {formatStatus(session.status)}
                     </span>
                   </div>
