@@ -86,6 +86,16 @@ const SAMPLE_PROMPTS_BY_ROLE: Record<AiRoleType, string[]> = {
   ],
 };
 
+function getDefaultSessionName(existing: string[]): string {
+  let base = 'bot-wifi';
+  if (!existing.includes(base)) return base;
+  let counter = 2;
+  while (existing.includes(`${base}-${counter}`)) {
+    counter++;
+  }
+  return `${base}-${counter}`;
+}
+
 export function CreateSessionModal({
   isOpen,
   onClose,
@@ -93,7 +103,7 @@ export function CreateSessionModal({
   onSessionCreated,
   isCreating,
 }: CreateSessionModalProps) {
-  const [sessionName, setSessionName] = useState('');
+  const [sessionName, setSessionName] = useState(() => getDefaultSessionName(existingSessionNames));
   const [activeTab, setActiveTab] = useState<'general' | 'flow' | 'triggers' | 'role' | 'business' | 'knowledge' | 'llm' | 'schedule' | 'test'>('flow');
   const [isFullscreen, setIsFullscreen] = useState(false);
 
@@ -120,8 +130,9 @@ export function CreateSessionModal({
 
   if (!isOpen) return null;
 
+  const currentEffectiveName = sessionName.trim().toLowerCase() || getDefaultSessionName(existingSessionNames);
   const nameIssues = sessionName ? sessionNameIssues(sessionName, existingSessionNames) : [];
-  const isValidName = canCreateSession(sessionName, existingSessionNames);
+  const isValidName = canCreateSession(currentEffectiveName, existingSessionNames);
 
   const handleToggleDay = (dayId: number) => {
     setSchedule(prev => {
@@ -144,7 +155,7 @@ export function CreateSessionModal({
     try {
       const mockConfig: ChatAiConfig = {
         chatId: '*',
-        sessionId: sessionName || 'temp_session',
+        sessionId: currentEffectiveName,
         enabled: enableAi,
         autoPilot,
         role: selectedRole,
@@ -169,14 +180,23 @@ export function CreateSessionModal({
   };
 
   const handleSubmit = async () => {
-    if (!isValidName || isCreating) return;
+    let targetName = sessionName.trim().toLowerCase();
+    if (!targetName) {
+      targetName = getDefaultSessionName(existingSessionNames);
+      setSessionName(targetName);
+    }
 
-    const trimmedName = sessionName.trim().toLowerCase();
+    if (!canCreateSession(targetName, existingSessionNames)) {
+      setActiveTab('general');
+      return;
+    }
+
+    if (isCreating) return;
 
     // Save session AI configuration
     const aiConfig: ChatAiConfig = {
       chatId: '*',
-      sessionId: trimmedName,
+      sessionId: targetName,
       enabled: enableAi,
       autoPilot,
       role: selectedRole,
@@ -193,7 +213,7 @@ export function CreateSessionModal({
     };
     saveSessionAiConfig(aiConfig);
 
-    await onSessionCreated(trimmedName);
+    await onSessionCreated(targetName);
   };
 
   const getRoleIcon = (roleKey: AiRoleType) => {
@@ -239,6 +259,35 @@ export function CreateSessionModal({
             <button type="button" className="btn-icon" onClick={onClose} aria-label="Cerrar">
               <X size={20} />
             </button>
+          </div>
+        </div>
+
+        {/* Persistent Quick Session Name Bar */}
+        <div className="session-name-top-bar">
+          <div className="session-name-top-label">
+            <span className="name-bar-icon">🏷️</span>
+            <span>Nombre de la Sesión:</span>
+          </div>
+          <div className="session-name-top-input-wrap">
+            <input
+              type="text"
+              placeholder="ej. bot-ventas, soporte-principal"
+              value={sessionName}
+              onChange={e => {
+                const clean = e.target.value.toLowerCase().replace(/\s+/g, '-');
+                setSessionName(clean);
+              }}
+              className={nameIssues.length > 0 ? 'has-error' : ''}
+            />
+            {nameIssues.length > 0 && (
+              <span className="name-bar-error-text">
+                {nameIssues.includes('duplicate')
+                  ? '⚠️ Ya existe una sesión con este nombre'
+                  : nameIssues.includes('format')
+                  ? '⚠️ Solo minúsculas, números y guiones'
+                  : '⚠️ Revisa el nombre'}
+              </span>
+            )}
           </div>
         </div>
 

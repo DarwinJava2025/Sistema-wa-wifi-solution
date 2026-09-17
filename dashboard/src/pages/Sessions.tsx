@@ -132,7 +132,7 @@ export function Sessions() {
     dismissQrForSession,
   } = useSessionPairing({ sessions, sessionsRef, reloadSessions: fetchSessions });
 
-  const { showCreateModal, setShowCreateModal, setNewSessionName, creating, handleCreate } =
+  const { showCreateModal, setShowCreateModal, creating, handleCreate } =
     useSessionCreateForm({
       onCreated: newSession => {
         // Functional append: never capture a stale `sessions` (a WS or fetch between the await and the
@@ -463,8 +463,7 @@ export function Sessions() {
         existingSessionNames={existingSessionNames}
         isCreating={creating}
         onSessionCreated={async (name: string) => {
-          setNewSessionName(name);
-          await handleCreate();
+          await handleCreate(name);
         }}
       />
 

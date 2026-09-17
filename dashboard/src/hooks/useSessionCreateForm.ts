@@ -14,7 +14,7 @@ export interface SessionCreateForm {
   newSessionName: string;
   setNewSessionName: (name: string) => void;
   creating: boolean;
-  handleCreate: () => Promise<void>;
+  handleCreate: (nameOverride?: string) => Promise<void>;
 }
 
 /**
@@ -31,11 +31,12 @@ export function useSessionCreateForm({ onCreated, onFailed }: UseSessionCreateFo
   const [newSessionName, setNewSessionName] = useState('');
   const [creating, setCreating] = useState(false);
 
-  const handleCreate = async () => {
-    if (!newSessionName.trim()) return;
+  const handleCreate = async (nameOverride?: string) => {
+    const targetName = (nameOverride !== undefined ? nameOverride : newSessionName).trim();
+    if (!targetName) return;
     try {
       setCreating(true);
-      const newSession = await sessionApi.create(newSessionName);
+      const newSession = await sessionApi.create(targetName);
       setNewSessionName('');
       setShowCreateModal(false);
       toast.success(t('sessions.create.successTitle'), t('sessions.create.successDesc', { name: newSession.name }));
