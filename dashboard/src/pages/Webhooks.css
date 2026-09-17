@@ -622,3 +622,442 @@
 .webhooks-page .toggle-status.inactive {
   color: var(--text-muted);
 }
+
+/* ==========================================================================
+   Help Tooltip & Interactive Guide
+   ========================================================================== */
+
+.webhooks-page .help-tooltip-container {
+  display: inline-flex;
+  align-items: center;
+  position: relative;
+  margin-left: 0.35rem;
+  color: var(--text-muted, #94a3b8);
+  cursor: pointer;
+  vertical-align: middle;
+  transition: color 0.2s ease;
+}
+
+.webhooks-page .help-tooltip-container:hover {
+  color: var(--primary, #25d366);
+}
+
+.webhooks-page .help-tooltip-icon {
+  opacity: 0.85;
+}
+
+.webhooks-page .help-tooltip-popover {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 260px;
+  max-width: 320px;
+  background: var(--bg-white, #1e293b);
+  border: 1px solid var(--border, #334155);
+  padding: 0.625rem 0.75rem;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  z-index: 1000;
+  pointer-events: none;
+  animation: fadeIn 0.15s ease-in-out;
+}
+
+.webhooks-page .help-tooltip-popover p {
+  margin: 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-primary, #f1f5f9);
+  font-weight: 400;
+  text-align: left;
+}
+
+/* Guide Accordion Banner */
+.webhooks-page .webhook-guide-card {
+  background: linear-gradient(135deg, rgba(37, 211, 102, 0.08) 0%, rgba(59, 130, 246, 0.05) 100%);
+  border: 1px solid rgba(37, 211, 102, 0.25);
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+.webhooks-page .webhook-guide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.875rem 1.25rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.webhooks-page .webhook-guide-header:hover {
+  background: rgba(37, 211, 102, 0.05);
+}
+
+.webhooks-page .webhook-guide-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.webhooks-page .guide-icon {
+  color: var(--primary, #25d366);
+}
+
+.webhooks-page .btn-guide-toggle {
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0.25rem;
+}
+
+.webhooks-page .webhook-guide-content {
+  padding: 0 1.25rem 1.25rem 1.25rem;
+  border-top: 1px solid rgba(37, 211, 102, 0.15);
+}
+
+.webhooks-page .guide-steps-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.webhooks-page .guide-step-card {
+  background: var(--bg-white, #1e293b);
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  padding: 1rem;
+  position: relative;
+}
+
+.webhooks-page .guide-step-card .step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  background: var(--primary, #25d366);
+  color: #000;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border-radius: 50%;
+  margin-bottom: 0.5rem;
+}
+
+.webhooks-page .guide-step-card h4 {
+  margin: 0 0 0.35rem 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.webhooks-page .guide-step-card p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.webhooks-page .guide-step-card code {
+  background: rgba(37, 211, 102, 0.1);
+  color: var(--primary-text, #25d366);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+}
+
+/* ==========================================================================
+   Modal Form Fields & Presets
+   ========================================================================== */
+
+.webhooks-page .webhook-presets-container {
+  background: var(--bg-light, #0f172a);
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.webhooks-page .presets-label {
+  display: flex;
+  align-items: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.webhooks-page .presets-buttons-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.webhooks-page .btn-preset-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: var(--bg-white, #1e293b);
+  border: 1px solid var(--border, #334155);
+  color: var(--text-primary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.35rem 0.65rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.webhooks-page .btn-preset-pill:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #000;
+  transform: translateY(-1px);
+}
+
+.webhooks-page .webhook-form-field {
+  margin-bottom: 1.25rem;
+}
+
+.webhooks-page .field-label-with-help {
+  display: flex;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.webhooks-page .field-label-with-help label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.webhooks-page .webhook-select-input,
+.webhooks-page .webhook-url-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  background: var(--bg-light, #0f172a);
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 0.8125rem;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.webhooks-page .webhook-select-input:focus,
+.webhooks-page .webhook-url-input:focus {
+  border-color: var(--primary, #25d366);
+}
+
+.webhooks-page .field-subtext {
+  display: block;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 0.35rem;
+}
+
+/* ==========================================================================
+   Category Tabs & Selectable Event Cards
+   ========================================================================== */
+
+.webhooks-page .event-category-tabs {
+  display: flex;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.webhooks-page .cat-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  background: var(--bg-light, #0f172a);
+  border: 1px solid var(--border, #334155);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+}
+
+.webhooks-page .cat-tab-btn:hover {
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+.webhooks-page .cat-tab-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #000;
+  font-weight: 600;
+}
+
+.webhooks-page .categorized-events-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 0.625rem;
+  max-height: 250px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.webhooks-page .event-card-selectable {
+  background: var(--bg-light, #0f172a);
+  border: 1px solid var(--border, #334155);
+  border-radius: 8px;
+  padding: 0.625rem 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.webhooks-page .event-card-selectable:hover {
+  border-color: var(--primary);
+  background: rgba(37, 211, 102, 0.05);
+}
+
+.webhooks-page .event-card-selectable.selected {
+  background: rgba(37, 211, 102, 0.12);
+  border-color: var(--primary, #25d366);
+}
+
+.webhooks-page .event-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.35rem;
+}
+
+.webhooks-page .event-card-name-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.webhooks-page .event-card-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.webhooks-page .event-code-tag {
+  font-size: 0.6875rem;
+  color: var(--primary-text, #25d366);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.webhooks-page .event-checkbox {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1px solid var(--border, #334155);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: var(--bg-white, #1e293b);
+  transition: all 0.15s ease;
+}
+
+.webhooks-page .event-checkbox.checked {
+  background: var(--primary, #25d366);
+  border-color: var(--primary, #25d366);
+  color: #000;
+}
+
+.webhooks-page .event-card-desc {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+/* ==========================================================================
+   Sidebar Reference with Search
+   ========================================================================== */
+
+.webhooks-page .events-reference-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.webhooks-page .events-reference-header h3 {
+  margin: 0;
+}
+
+.webhooks-page .events-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-light, #0f172a);
+  border: 1px solid var(--border, #334155);
+  border-radius: 6px;
+  padding: 0.4rem 0.65rem;
+  margin-bottom: 1rem;
+}
+
+.webhooks-page .events-search-bar svg {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.webhooks-page .events-search-bar input {
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.78rem;
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.webhooks-page .event-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.2rem;
+}
+
+.webhooks-page .event-item-badge {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: rgba(37, 211, 102, 0.15);
+  color: var(--primary-text, #25d366);
+  font-weight: 600;
+}
+
+.webhooks-page .event-item-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.webhooks-page .event-item-desc {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.35;
+}
+
+.webhooks-page .no-events-found {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 1rem 0;
+  margin: 0;
+}

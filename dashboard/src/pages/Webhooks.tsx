@@ -11,6 +11,16 @@ import {
   Check,
   AlertCircle,
   Filter,
+  HelpCircle,
+  Zap,
+  Bot,
+  BarChart3,
+  Users,
+  Globe,
+  Search,
+  BookOpen,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { webhookApi, type Webhook, type WebhookFilters, type WebhookFilterCondition } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -34,7 +44,6 @@ const supportsFilters = (events: string[]) => events.some(e => e === '*' || e.st
 
 type TFn = ReturnType<typeof useTranslation>['t'];
 
-// One-line, human-readable summary of a condition for the badge popover, reusing the FilterBuilder labels.
 function conditionSummary(c: WebhookFilterCondition, t: TFn): string {
   const field = t(`webhooks.filters.fields.${c.field}`, { defaultValue: c.field });
   const operator = t(`webhooks.filters.operators.${c.operator}`, { defaultValue: c.operator });
@@ -50,8 +59,6 @@ function conditionSummary(c: WebhookFilterCondition, t: TFn): string {
   return `${field} ${operator} ${value}${caseNote}`;
 }
 
-// Filters badge with a hover/focus popover listing the configured conditions. The popover is
-// fixed-positioned from the badge's rect so the card's `overflow: hidden` doesn't clip it.
 function FilterBadge({ filters }: { filters: WebhookFilters }) {
   const { t } = useTranslation();
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
@@ -86,34 +93,224 @@ function FilterBadge({ filters }: { filters: WebhookFilters }) {
   );
 }
 
-// Must stay aligned with the backend WEBHOOK_EVENTS: the API now rejects unknown
-// event names, so offering e.g. the never-emitted 'session.connected' would 400 on save.
-const availableEventNames = [
-  'message.received',
-  'message.sent',
-  'message.ack',
-  'message.failed',
-  'message.revoked',
-  'message.reaction',
-  'message.edited',
-  'session.status',
-  'session.qr',
-  'session.authenticated',
-  'session.disconnected',
-  'session.reconnect_loop',
-  'session.restriction',
-  'presence.update',
-  'group.join',
-  'group.leave',
-  'group.update',
-  'group.join_request',
-  'call.received',
-  'call.accepted',
-  'call.rejected',
-  'call.missed',
-  'status.received',
-  '*',
-] as const;
+// Help tooltip component with interactive popup
+function HelpTooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span
+      className="help-tooltip-container"
+      onMouseEnter={() => setShow(true)}
+      onMouseLeave={() => setShow(false)}
+      onClick={() => setShow(!show)}
+      title="Haz clic para ver explicación"
+    >
+      <HelpCircle size={15} className="help-tooltip-icon" />
+      {show && (
+        <div className="help-tooltip-popover">
+          <p>{text}</p>
+        </div>
+      )}
+    </span>
+  );
+}
+
+// Categorized events definition
+interface EventCategory {
+  id: string;
+  label: string;
+  icon: string;
+  events: Array<{
+    name: string;
+    title: string;
+    description: string;
+    badge: string;
+  }>;
+}
+
+const EVENT_CATEGORIES: EventCategory[] = [
+  {
+    id: 'messages',
+    label: 'Mensajes',
+    icon: '💬',
+    events: [
+      {
+        name: 'message.received',
+        title: '📩 Mensaje Recibido',
+        description: 'Notifica cada vez que un contacto o grupo envía un mensaje (texto, audio, imagen, documentos).',
+        badge: 'Más Usado',
+      },
+      {
+        name: 'message.sent',
+        title: '📤 Mensaje Enviado',
+        description: 'Notifica cuando tú o tu bot envían un mensaje saliente con éxito.',
+        badge: 'Saliente',
+      },
+      {
+        name: 'message.ack',
+        title: '✓✓ Estado de Entrega (ACK)',
+        description: 'Informa cuando un mensaje fue enviado (1 check), entregado (2 checks grises) o leído (2 checks azules).',
+        badge: 'Lecturas',
+      },
+      {
+        name: 'message.failed',
+        title: '❌ Mensaje Fallido',
+        description: 'Notifica si un mensaje no pudo ser entregado por error de red o número inválido.',
+        badge: 'Errores',
+      },
+      {
+        name: 'message.revoked',
+        title: '🗑️ Mensaje Eliminado',
+        description: 'Notifica cuando alguien borra un mensaje ("eliminar para todos").',
+        badge: 'Eliminados',
+      },
+      {
+        name: 'message.reaction',
+        title: '❤️ Reacciones Emoji',
+        description: 'Notifica cuando un usuario reacciona a un mensaje con un emoji.',
+        badge: 'Interacciones',
+      },
+      {
+        name: 'message.edited',
+        title: '✏️ Mensaje Editado',
+        description: 'Notifica cuando un usuario modifica el contenido de un mensaje enviado previamente.',
+        badge: 'Ediciones',
+      },
+    ],
+  },
+  {
+    id: 'sessions',
+    label: 'Sesión & Estado',
+    icon: '📱',
+    events: [
+      {
+        name: 'session.status',
+        title: '🔄 Estado de Sesión',
+        description: 'Notifica transiciones de estado del bot (iniciando, esperando QR, conectado, desconectado).',
+        badge: 'Esencial',
+      },
+      {
+        name: 'session.qr',
+        title: '🏁 Código QR Generado',
+        description: 'Envía el nuevo código QR en base64 para vincular la sesión con WhatsApp.',
+        badge: 'Vinculación',
+      },
+      {
+        name: 'session.authenticated',
+        title: '🔑 Autenticación Exitosa',
+        description: 'Notifica cuando el teléfono escaneó el código QR y la sesión se autenticó.',
+        badge: 'Conectado',
+      },
+      {
+        name: 'session.disconnected',
+        title: '⚠️ Sesión Desconectada',
+        description: 'Notifica cuando el teléfono pierde conexión a internet o se cierra sesión.',
+        badge: 'Alertas',
+      },
+      {
+        name: 'session.restriction',
+        title: '🛡️ Restricción Temporal',
+        description: 'Alerta si WhatsApp impone un límite temporal de mensajería o verificación.',
+        badge: 'Seguridad',
+      },
+      {
+        name: 'session.reconnect_loop',
+        title: '🔁 Bucle de Reconexión',
+        description: 'Alerta cuando hay intentos repetidos de reconexión sin éxito.',
+        badge: 'Diagnóstico',
+      },
+    ],
+  },
+  {
+    id: 'groups',
+    label: 'Grupos',
+    icon: '👥',
+    events: [
+      {
+        name: 'group.join',
+        title: '👋 Miembro Entra al Grupo',
+        description: 'Notifica cuando un usuario se une o es añadido a un grupo de WhatsApp.',
+        badge: 'Entradas',
+      },
+      {
+        name: 'group.leave',
+        title: '🚪 Miembro Sale del Grupo',
+        description: 'Notifica cuando un usuario abandona o es expulsado de un grupo.',
+        badge: 'Salidas',
+      },
+      {
+        name: 'group.update',
+        title: '⚙️ Actualización de Grupo',
+        description: 'Notifica cambios en el título, foto, descripción o permisos de un grupo.',
+        badge: 'Ajustes',
+      },
+      {
+        name: 'group.join_request',
+        title: '📋 Solicitud de Entrada',
+        description: 'Notifica solicitudes de usuarios para ingresar a grupos privados con aprobación.',
+        badge: 'Solicitudes',
+      },
+    ],
+  },
+  {
+    id: 'calls',
+    label: 'Llamadas',
+    icon: '📞',
+    events: [
+      {
+        name: 'call.received',
+        title: '📞 Llamada Entrante',
+        description: 'Notifica cuando entra una llamada de voz o videollamada a la línea.',
+        badge: 'Entrante',
+      },
+      {
+        name: 'call.accepted',
+        title: '🟢 Llamada Aceptada',
+        description: 'Notifica cuando se atiende una llamada en el teléfono.',
+        badge: 'Atendida',
+      },
+      {
+        name: 'call.rejected',
+        title: '🔴 Llamada Rechazada',
+        description: 'Notifica cuando se rechaza una llamada entrante.',
+        badge: 'Rechazada',
+      },
+      {
+        name: 'call.missed',
+        title: '📵 Llamada Perdida',
+        description: 'Notifica cuando una llamada entrante no fue atendida a tiempo.',
+        badge: 'Perdida',
+      },
+    ],
+  },
+  {
+    id: 'others',
+    label: 'Otros Eventos',
+    icon: '🔔',
+    events: [
+      {
+        name: 'status.received',
+        title: '📱 Estado / Story Publicado',
+        description: 'Notifica cuando un contacto publica una historia o estado temporal en WhatsApp.',
+        badge: 'Stories',
+      },
+      {
+        name: 'presence.update',
+        title: '✍️ Presencia del Contacto',
+        description: 'Notifica cuando un contacto está escribiendo, grabando audio o disponible.',
+        badge: 'Tiempo Real',
+      },
+      {
+        name: '*',
+        title: '🌐 Todos los Eventos (*)',
+        description: 'Dispara el webhook ante cualquier notificación o suceso en el sistema.',
+        badge: 'Comodín',
+      },
+    ],
+  },
+];
+
+// Flat event map for quick lookup
+const ALL_EVENTS = EVENT_CATEGORIES.flatMap(c => c.events);
 
 export function Webhooks() {
   const { t } = useTranslation();
@@ -135,31 +332,40 @@ export function Webhooks() {
     events: string[];
     sessionId: string;
     filters: WebhookFilters | null;
-  }>({ url: '', events: ['message.received'], sessionId: '', filters: null });
+  }>({ url: '', events: ['message.received', 'session.status'], sessionId: '', filters: null });
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [selectedCategoryTab, setSelectedCategoryTab] = useState('messages');
+  const [searchEventQuery, setSearchEventQuery] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
   const toast = useToast();
 
-  // Single source for the contact/group autocomplete in whichever modal is open.
   const activeSessionId = showEditModal ? (editWebhook?.sessionId ?? '') : newWebhook.sessionId;
   const { data: chats = [] } = useSessionChatsQuery(activeSessionId, showCreateModal || showEditModal);
 
-  const eventDescription = (name: string) => {
-    if (name === '*') return t('webhooks.eventDescriptions.all');
-    return t(`webhooks.eventDescriptions.${name}`, { defaultValue: name });
+  // Quick preset handlers
+  const applyPreset = (presetEvents: string[]) => {
+    setNewWebhook(prev => ({ ...prev, events: presetEvents }));
+  };
+
+  const applyEditPreset = (presetEvents: string[]) => {
+    if (!editWebhook) return;
+    setEditWebhook(prev => (prev ? { ...prev, events: presetEvents } : null));
   };
 
   const handleCreate = async () => {
-    if (!newWebhook.url || !newWebhook.sessionId) return;
+    if (!newWebhook.url.trim() || !newWebhook.sessionId) {
+      toast.error('Campos requeridos', 'Por favor selecciona la sesión e ingresa la URL del webhook.');
+      return;
+    }
     try {
       await createMutation.mutateAsync({
         sessionId: newWebhook.sessionId,
-        url: newWebhook.url,
-        events: newWebhook.events,
-        // Don't persist message-filters when no message events are selected (the filter UI is hidden).
+        url: newWebhook.url.trim(),
+        events: newWebhook.events.length > 0 ? newWebhook.events : ['message.received'],
         filters: supportsFilters(newWebhook.events) ? newWebhook.filters : null,
       });
       setShowCreateModal(false);
-      setNewWebhook({ url: '', events: ['message.received'], sessionId: '', filters: null });
+      setNewWebhook({ url: '', events: ['message.received', 'session.status'], sessionId: '', filters: null });
       toast.success(t('webhooks.toasts.created'));
     } catch (err) {
       toast.error(
@@ -223,10 +429,9 @@ export function Webhooks() {
         sessionId: editWebhook.sessionId,
         id: editWebhook.id,
         data: {
-          url: editWebhook.url,
+          url: editWebhook.url.trim(),
           events: editWebhook.events,
           active: editWebhook.active,
-          // Clear message-filters if the edit removed all message events (the filter UI is hidden then).
           filters: supportsFilters(editWebhook.events) ? (editWebhook.filters ?? null) : null,
         },
       });
@@ -259,6 +464,14 @@ export function Webhooks() {
     }));
   };
 
+  // Filtered reference events for sidebar
+  const filteredEventsForSidebar = ALL_EVENTS.filter(
+    e =>
+      e.name.toLowerCase().includes(searchEventQuery.toLowerCase()) ||
+      e.title.toLowerCase().includes(searchEventQuery.toLowerCase()) ||
+      e.description.toLowerCase().includes(searchEventQuery.toLowerCase()),
+  );
+
   if (loading) {
     return (
       <div
@@ -274,7 +487,7 @@ export function Webhooks() {
     <div className="webhooks-page">
       <PageHeader
         title={t('webhooks.title')}
-        subtitle={t('webhooks.subtitle')}
+        subtitle="Configura callbacks HTTP para recibir notificaciones automáticas en tiempo real en n8n, Make, Zapier o tu propio servidor"
         actions={
           canWrite && (
             <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
@@ -285,6 +498,50 @@ export function Webhooks() {
         }
       />
 
+      {/* Quick Interactive Guide Banner */}
+      <div className="webhook-guide-card">
+        <div className="webhook-guide-header" onClick={() => setShowGuide(!showGuide)}>
+          <div className="webhook-guide-title">
+            <BookOpen size={18} className="guide-icon" />
+            <span>¿Cómo funcionan los Webhooks? (Guía rápida de integración)</span>
+          </div>
+          <button type="button" className="btn-guide-toggle">
+            {showGuide ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+        </div>
+
+        {showGuide && (
+          <div className="webhook-guide-content">
+            <div className="guide-steps-grid">
+              <div className="guide-step-card">
+                <div className="step-number">1</div>
+                <h4>1. Crea tu URL de Destino</h4>
+                <p>
+                  Obtén tu URL de Webhook en <strong>n8n, Make, Zapier</strong> o crea una ruta en tu servidor (ej.{' '}
+                  <code>https://mi-servidor.com/webhook</code>).
+                </p>
+              </div>
+              <div className="guide-step-card">
+                <div className="step-number">2</div>
+                <h4>2. Selecciona la Sesión y Eventos</h4>
+                <p>
+                  Elige qué bot de WhatsApp enviará los datos y marca eventos como{' '}
+                  <code>message.received</code> (para mensajes entrantes) o <code>session.status</code>.
+                </p>
+              </div>
+              <div className="guide-step-card">
+                <div className="step-number">3</div>
+                <h4>3. Prueba y Automatiza</h4>
+                <p>
+                  Usa el botón <strong>"Probar" (▶)</strong> para enviar una carga JSON de prueba y verificar que tu
+                  servidor responda con código HTTP 200 OK.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
       {webhooksError && (
         <div className="error-banner" role="alert">
           <AlertCircle size={20} />
@@ -292,76 +549,181 @@ export function Webhooks() {
         </div>
       )}
 
+      {/* CREATE WEBHOOK MODAL */}
       {showCreateModal && (
         <Modal
           open
           onClose={() => setShowCreateModal(false)}
-          title={t('webhooks.createTitle')}
+          title="Configurar Nuevo Webhook"
           closeLabel={t('common.close')}
           footer={
             <>
               <button className="btn-secondary" onClick={() => setShowCreateModal(false)}>
                 {t('common.cancel')}
               </button>
-              <button className="btn-primary" onClick={handleCreate}>
-                {t('common.create')}
+              <button className="btn-primary" onClick={handleCreate} disabled={!newWebhook.url.trim() || !newWebhook.sessionId}>
+                <Check size={16} />
+                Guardar Webhook
               </button>
             </>
           }
         >
-          <label htmlFor="wh-1">{t('webhooks.session')}</label>
-          <select
-            id="wh-1"
-            value={newWebhook.sessionId}
-            onChange={e => setNewWebhook({ ...newWebhook, sessionId: e.target.value })}
-          >
-            <option value="">{t('webhooks.selectSession')}</option>
-            {sessions.map(s => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </select>
-          <label htmlFor="wh-2">{t('common.url')}</label>
-          <input
-            id="wh-2"
-            type="url"
-            placeholder="https://..."
-            value={newWebhook.url}
-            onChange={e => setNewWebhook({ ...newWebhook, url: e.target.value })}
-          />
-          <label>{t('webhooks.events')}</label>
-          <div className="event-tags">
-            {availableEventNames.map(name => {
-              const isSelected = newWebhook.events.includes(name);
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  className={`event-tag ${isSelected ? 'selected' : ''}`}
-                  onClick={() => toggleNewEvent(name)}
-                >
-                  {isSelected && <Check size={12} className="tag-check-icon" />}
-                  {name}
-                </button>
-              );
-            })}
+          {/* Quick Presets Bar */}
+          <div className="webhook-presets-container">
+            <span className="presets-label">
+              ⚡ Preajustes rápidos con 1 clic:
+              <HelpTooltip text="Selecciona una plantilla predefinida para configurar automáticamente los eventos más recomendados según tu caso de uso." />
+            </span>
+            <div className="presets-buttons-row">
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyPreset(['message.received', 'session.status'])}
+              >
+                <Zap size={14} /> n8n / Make / Zapier
+              </button>
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyPreset(['message.received'])}
+              >
+                <Bot size={14} /> Chatbot (Solo Entrantes)
+              </button>
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyPreset(['message.received', 'message.sent', 'message.ack', 'message.failed'])}
+              >
+                <BarChart3 size={14} /> CRM & Lecturas
+              </button>
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyPreset(['group.join', 'group.leave', 'group.update'])}
+              >
+                <Users size={14} /> Grupos
+              </button>
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyPreset(['*'])}
+              >
+                <Globe size={14} /> Todos (*)
+              </button>
+            </div>
           </div>
-          {supportsFilters(newWebhook.events) && (
-            <FilterBuilder
-              filters={newWebhook.filters}
-              onChange={filters => setNewWebhook(prev => ({ ...prev, filters }))}
-              chats={chats}
+
+          {/* Session Selection */}
+          <div className="webhook-form-field">
+            <div className="field-label-with-help">
+              <label htmlFor="wh-create-session">1. Sesión de WhatsApp:</label>
+              <HelpTooltip text="Selecciona la cuenta de WhatsApp o bot que emitirá las notificaciones y eventos hacia este webhook." />
+            </div>
+            <select
+              id="wh-create-session"
+              value={newWebhook.sessionId}
+              onChange={e => setNewWebhook({ ...newWebhook, sessionId: e.target.value })}
+              className="webhook-select-input"
+            >
+              <option value="">-- Elige la sesión que enviará los datos --</option>
+              {sessions.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} ({s.phone || 'Sin teléfono asignado'})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Webhook URL Input */}
+          <div className="webhook-form-field">
+            <div className="field-label-with-help">
+              <label htmlFor="wh-create-url">2. URL del Callback (Endpoint HTTP POST):</label>
+              <HelpTooltip text="La dirección URL pública donde OpenWA enviará una solicitud HTTP POST en formato JSON cada vez que ocurra un evento seleccionado." />
+            </div>
+            <input
+              id="wh-create-url"
+              type="url"
+              placeholder="https://tu-dominio.com/webhook o https://webhook.site/..."
+              value={newWebhook.url}
+              onChange={e => setNewWebhook({ ...newWebhook, url: e.target.value })}
+              className="webhook-url-input"
             />
+            <span className="field-subtext">
+              💡 Ejemplo: URL de Webhook Trigger en n8n, Make.com, Zapier o una API REST propia.
+            </span>
+          </div>
+
+          {/* Events Selector with Categories */}
+          <div className="webhook-form-field">
+            <div className="field-label-with-help">
+              <label>3. Eventos a Escuchar ({newWebhook.events.length} seleccionados):</label>
+              <HelpTooltip text="Marca qué sucesos enviarán datos a tu servidor. Cada evento incluye información detallada como número del remitente, texto, archivos adjuntos o estado de la conexión." />
+            </div>
+
+            {/* Category Tabs */}
+            <div className="event-category-tabs">
+              {EVENT_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`cat-tab-btn ${selectedCategoryTab === cat.id ? 'active' : ''}`}
+                  onClick={() => setSelectedCategoryTab(cat.id)}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Events List for Current Tab */}
+            <div className="categorized-events-grid">
+              {EVENT_CATEGORIES.find(c => c.id === selectedCategoryTab)?.events.map(ev => {
+                const isSelected = newWebhook.events.includes(ev.name);
+                return (
+                  <div
+                    key={ev.name}
+                    className={`event-card-selectable ${isSelected ? 'selected' : ''}`}
+                    onClick={() => toggleNewEvent(ev.name)}
+                  >
+                    <div className="event-card-top">
+                      <div className="event-card-name-group">
+                        <span className="event-card-title">{ev.title}</span>
+                        <code className="event-code-tag">{ev.name}</code>
+                      </div>
+                      <div className={`event-checkbox ${isSelected ? 'checked' : ''}`}>
+                        {isSelected && <Check size={12} />}
+                      </div>
+                    </div>
+                    <p className="event-card-desc">{ev.description}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Filter Builder */}
+          {supportsFilters(newWebhook.events) && (
+            <div className="webhook-form-field">
+              <div className="field-label-with-help">
+                <label>4. Filtros de Mensajes (Opcional):</label>
+                <HelpTooltip text="Permite que el webhook solo se dispare si el mensaje cumple reglas específicas (ej. no es de grupo, contiene ciertas palabras clave o proviene de un número específico)." />
+              </div>
+              <FilterBuilder
+                filters={newWebhook.filters}
+                onChange={filters => setNewWebhook(prev => ({ ...prev, filters }))}
+                chats={chats}
+              />
+            </div>
           )}
         </Modal>
       )}
 
+      {/* EDIT WEBHOOK MODAL */}
       {showEditModal && editWebhook && (
         <Modal
           open
           onClose={() => setShowEditModal(false)}
-          title={t('webhooks.editTitle')}
+          title="Editar Webhook"
           closeLabel={t('common.close')}
           footer={
             <>
@@ -369,45 +731,123 @@ export function Webhooks() {
                 {t('common.cancel')}
               </button>
               <button className="btn-primary" onClick={handleEdit}>
-                {t('webhooks.saveChanges')}
+                <Check size={16} />
+                Guardar Cambios
               </button>
             </>
           }
         >
-          <label htmlFor="wh-3">{t('common.url')}</label>
-          <input
-            id="wh-3"
-            type="url"
-            value={editWebhook.url}
-            onChange={e => setEditWebhook({ ...editWebhook, url: e.target.value })}
-          />
-          <label>{t('webhooks.events')}</label>
-          <div className="event-tags">
-            {availableEventNames.map(name => {
-              const isSelected = editWebhook.events.includes(name);
-              return (
-                <button
-                  key={name}
-                  type="button"
-                  className={`event-tag ${isSelected ? 'selected' : ''}`}
-                  onClick={() => toggleEditEvent(name)}
-                >
-                  {isSelected && <Check size={12} className="tag-check-icon" />}
-                  {name}
-                </button>
-              );
-            })}
+          {/* Presets Bar */}
+          <div className="webhook-presets-container">
+            <span className="presets-label">⚡ Preajustes rápidos:</span>
+            <div className="presets-buttons-row">
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyEditPreset(['message.received', 'session.status'])}
+              >
+                <Zap size={14} /> n8n / Make / Zapier
+              </button>
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyEditPreset(['message.received'])}
+              >
+                <Bot size={14} /> Chatbot
+              </button>
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyEditPreset(['message.received', 'message.sent', 'message.ack', 'message.failed'])}
+              >
+                <BarChart3 size={14} /> CRM & Lecturas
+              </button>
+              <button
+                type="button"
+                className="btn-preset-pill"
+                onClick={() => applyEditPreset(['*'])}
+              >
+                <Globe size={14} /> Todos (*)
+              </button>
+            </div>
           </div>
-          {supportsFilters(editWebhook.events) && (
-            <FilterBuilder
-              filters={editWebhook.filters}
-              onChange={filters => setEditWebhook(prev => (prev ? { ...prev, filters } : prev))}
-              chats={chats}
+
+          <div className="webhook-form-field">
+            <div className="field-label-with-help">
+              <label htmlFor="wh-edit-url">URL del Callback:</label>
+              <HelpTooltip text="Dirección URL de tu webhook a donde se enviarán las notificaciones." />
+            </div>
+            <input
+              id="wh-edit-url"
+              type="url"
+              value={editWebhook.url}
+              onChange={e => setEditWebhook({ ...editWebhook, url: e.target.value })}
+              className="webhook-url-input"
             />
+          </div>
+
+          <div className="webhook-form-field">
+            <div className="field-label-with-help">
+              <label>Eventos a Escuchar ({editWebhook.events.length} seleccionados):</label>
+              <HelpTooltip text="Marca los eventos que deseas recibir en esta URL." />
+            </div>
+
+            <div className="event-category-tabs">
+              {EVENT_CATEGORIES.map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`cat-tab-btn ${selectedCategoryTab === cat.id ? 'active' : ''}`}
+                  onClick={() => setSelectedCategoryTab(cat.id)}
+                >
+                  <span>{cat.icon}</span>
+                  <span>{cat.label}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="categorized-events-grid">
+              {EVENT_CATEGORIES.find(c => c.id === selectedCategoryTab)?.events.map(ev => {
+                const isSelected = editWebhook.events.includes(ev.name);
+                return (
+                  <div
+                    key={ev.name}
+                    className={`event-card-selectable ${isSelected ? 'selected' : ''}`}
+                    onClick={() => toggleEditEvent(ev.name)}
+                  >
+                    <div className="event-card-top">
+                      <div className="event-card-name-group">
+                        <span className="event-card-title">{ev.title}</span>
+                        <code className="event-code-tag">{ev.name}</code>
+                      </div>
+                      <div className={`event-checkbox ${isSelected ? 'checked' : ''}`}>
+                        {isSelected && <Check size={12} />}
+                      </div>
+                    </div>
+                    <p className="event-card-desc">{ev.description}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {supportsFilters(editWebhook.events) && (
+            <div className="webhook-form-field">
+              <div className="field-label-with-help">
+                <label>Filtros de Mensajes (Opcional):</label>
+                <HelpTooltip text="Aplica condiciones personalizadas sobre los mensajes recibidos." />
+              </div>
+              <FilterBuilder
+                filters={editWebhook.filters}
+                onChange={filters => setEditWebhook(prev => (prev ? { ...prev, filters } : prev))}
+                chats={chats}
+              />
+            </div>
           )}
+
           <div className="toggle-group">
             <span className="toggle-label" id="webhook-active-label">
-              {t('common.status')}
+              Estado del Webhook:
             </span>
             <label className="toggle-switch">
               <input
@@ -419,12 +859,13 @@ export function Webhooks() {
               <span className="toggle-slider"></span>
             </label>
             <span className={`toggle-status ${editWebhook.active ? 'active' : 'inactive'}`}>
-              {editWebhook.active ? t('common.active') : t('common.inactive')}
+              {editWebhook.active ? 'Activo (Enviando notificaciones)' : 'Pausado'}
             </span>
           </div>
         </Modal>
       )}
 
+      {/* DELETE MODAL */}
       {showDeleteModal && deleteTarget && (
         <Modal
           open
@@ -460,13 +901,27 @@ export function Webhooks() {
         </Modal>
       )}
 
+      {/* MAIN CONTENT: WEBHOOKS LIST + SIDEBAR REFERENCE */}
       <div className="webhooks-content">
         <div className="webhooks-list-container">
           {webhooks.length === 0 ? (
             <div className="empty-table-state">
               <WebhookIcon size={48} strokeWidth={1} />
-              <h3>{t('webhooks.empty.title')}</h3>
-              <p>{t('webhooks.empty.description')}</p>
+              <h3>No hay webhooks configurados todavía</h3>
+              <p>
+                Haz clic en el botón <strong>"+ Añadir webhook"</strong> para conectar tu bot de WhatsApp con n8n, Make,
+                Zapier o tu backend en tiempo real.
+              </p>
+              {canWrite && (
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => setShowCreateModal(true)}
+                  style={{ marginTop: '1.25rem' }}
+                >
+                  <Plus size={16} /> Configurar mi primer webhook
+                </button>
+              )}
             </div>
           ) : (
             <div className="webhooks-card-list">
@@ -483,7 +938,7 @@ export function Webhooks() {
                       <div className="webhook-card-actions">
                         <button
                           className="icon-btn"
-                          title={t('webhooks.actions.test')}
+                          title="Enviar payload de prueba a esta URL"
                           onClick={() => handleTest(webhook.sessionId, webhook.id)}
                           disabled={testingId === webhook.id}
                         >
@@ -517,23 +972,26 @@ export function Webhooks() {
                       <div className="webhook-meta">
                         <div className="webhook-meta-item">
                           <span className="webhook-meta-label">{t('webhooks.columns.session')}</span>
-                          <span className="webhook-meta-value">{sessionName}</span>
+                          <span className="webhook-meta-value">🤖 {sessionName}</span>
                         </div>
                         <div className="webhook-meta-item">
                           <span className="webhook-meta-label">{t('webhooks.columns.status')}</span>
                           <span className={`status-badge ${webhook.active ? 'active' : 'inactive'}`}>
-                            {webhook.active ? t('common.active') : t('common.inactive')}
+                            {webhook.active ? 'Activo' : 'Inactivo'}
                           </span>
                         </div>
                       </div>
                       <div className="webhook-events">
                         <span className="webhook-meta-label">{t('webhooks.columns.events')}</span>
                         <div className="events-cell">
-                          {webhook.events.map((event: string) => (
-                            <span key={event} className="event-tag">
-                              {event}
-                            </span>
-                          ))}
+                          {webhook.events.map((event: string) => {
+                            const found = ALL_EVENTS.find(e => e.name === event);
+                            return (
+                              <span key={event} className="event-tag" title={found?.description || event}>
+                                {found ? found.title : event}
+                              </span>
+                            );
+                          })}
                           {webhook.filters?.conditions?.length ? <FilterBadge filters={webhook.filters} /> : null}
                         </div>
                       </div>
@@ -545,18 +1003,43 @@ export function Webhooks() {
           )}
         </div>
 
+        {/* SIDEBAR: EVENT REFERENCE WITH SEARCH & TOOLTIPS */}
         <div className="events-reference">
-          <h3>{t('webhooks.available')}</h3>
+          <div className="events-reference-header">
+            <h3>Eventos Disponibles</h3>
+            <HelpTooltip text="Catálogo completo de todos los eventos que WhatsApp y OpenWA pueden notificar a tus endpoints en tiempo real." />
+          </div>
+
+          <div className="events-search-bar">
+            <Search size={14} />
+            <input
+              type="text"
+              placeholder="Buscar evento (ej. received, qr)..."
+              value={searchEventQuery}
+              onChange={e => setSearchEventQuery(e.target.value)}
+            />
+          </div>
+
           <div className="events-list">
-            {availableEventNames.map(name => (
-              <div key={name} className="event-item">
-                <code>{name}</code>
-                <span>{eventDescription(name)}</span>
-              </div>
-            ))}
+            {filteredEventsForSidebar.length === 0 ? (
+              <p className="no-events-found">No se encontraron eventos coincidentes.</p>
+            ) : (
+              filteredEventsForSidebar.map(item => (
+                <div key={item.name} className="event-item">
+                  <div className="event-item-top">
+                    <code>{item.name}</code>
+                    <span className="event-item-badge">{item.badge}</span>
+                  </div>
+                  <span className="event-item-title">{item.title}</span>
+                  <span className="event-item-desc">{item.description}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+export default Webhooks;

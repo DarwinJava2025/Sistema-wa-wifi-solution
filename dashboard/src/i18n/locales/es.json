@@ -455,15 +455,33 @@
       "edit": "Editar",
       "delete": "Eliminar"
     },
-    "eventDescriptions": {
-      "message.received": "Cuando se recibe un mensaje",
-      "message.sent": "Cuando se envía un mensaje",
-      "session.connected": "Cuando una sesión se conecta",
-      "session.disconnected": "Cuando una sesión se desconecta",
-      "session.qr": "Cuando se genera un código QR",
-      "all": "Todos los eventos"
-    }
-  },
+      "eventDescriptions": {
+        "message.received": "📩 Mensaje recibido: Notifica cuando un contacto o grupo envía un mensaje (texto, audio, imagen, documentos).",
+        "message.sent": "📤 Mensaje enviado: Notifica cuando tu bot o tú envían un mensaje saliente con éxito.",
+        "message.ack": "✓✓ Estado de entrega (ACK): Notifica cuando el mensaje fue enviado (1 check), entregado (2 checks grises) o leído (2 checks azules).",
+        "message.failed": "❌ Mensaje fallido: Notifica cuando un mensaje no pudo ser entregado por error de red o número inválido.",
+        "message.revoked": "🗑️ Mensaje eliminado: Notifica cuando un usuario elimina o anula un mensaje ('eliminar para todos').",
+        "message.reaction": "❤️ Reacción emoji: Notifica cuando un usuario reacciona a un mensaje con un emoji.",
+        "message.edited": "✏️ Mensaje editado: Notifica cuando un usuario modifica el texto de un mensaje enviado previamente.",
+        "session.status": "🔄 Estado de la sesión: Notifica transiciones de estado del bot (iniciando, esperando QR, conectado, desconectado).",
+        "session.qr": "🏁 Código QR generado: Envía el nuevo código QR en base64 para vincular WhatsApp.",
+        "session.authenticated": "🔑 Sesión autenticada: Notifica cuando el teléfono vinculó el código QR exitosamente.",
+        "session.disconnected": "⚠️ Sesión desconectada: Notifica cuando el teléfono pierde conexión a internet o se cierra sesión.",
+        "session.reconnect_loop": "🔁 Bucle de reconexión: Alerta cuando hay intentos fallidos repetidos de reconexión.",
+        "session.restriction": "🛡️ Restricción de WhatsApp: Alerta si WhatsApp impone un límite temporal o verificación.",
+        "presence.update": "✍️ Estado de presencia: Notifica cuando el contacto está escribiendo, grabando audio o disponible.",
+        "group.join": "👋 Miembro entra al grupo: Notifica cuando un usuario se une o es añadido a un grupo.",
+        "group.leave": "🚪 Miembro sale del grupo: Notifica cuando un usuario abandona o es expulsado de un grupo.",
+        "group.update": "⚙️ Configuración del grupo: Notifica cambios en el nombre, foto, descripción o permisos del grupo.",
+        "group.join_request": "📋 Solicitud de unión: Notifica solicitudes de usuarios para ingresar a grupos privados.",
+        "call.received": "📞 Llamada entrante: Notifica cuando entra una llamada de voz o videollamada a la línea.",
+        "call.accepted": "🟢 Llamada aceptada: Notifica cuando se atiende una llamada.",
+        "call.rejected": "🔴 Llamada rechazada: Notifica cuando se rechaza una llamada entrante.",
+        "call.missed": "📵 Llamada perdida: Notifica cuando no se responde una llamada a tiempo.",
+        "status.received": "📱 Estado / Story publicado: Notifica cuando un contacto publica un nuevo estado temporal.",
+        "all": "🌐 Todos los eventos: Dispara el webhook ante cualquier actividad o notificación."
+      }
+    },
   "apiKeys": {
     "title": "Claves API",
     "subtitle": "Gestiona las claves API para autenticación y control de acceso",
