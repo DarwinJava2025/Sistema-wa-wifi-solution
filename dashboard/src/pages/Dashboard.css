@@ -379,3 +379,357 @@
     padding: 0.75rem;
   }
 }
+
+/* =============================================================================
+   Bot / Session Filter Bar
+   ============================================================================= */
+.dashboard .dashboard-bot-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+}
+
+.dashboard .bot-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.dashboard .bot-filter-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+.dashboard .bot-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.85rem;
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.dashboard .bot-filter-pill:hover {
+  border-color: var(--primary);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.dashboard .bot-filter-pill.active {
+  background: var(--primary, #25d366);
+  border-color: var(--primary, #25d366);
+  color: #000;
+  box-shadow: 0 2px 8px rgba(37, 211, 102, 0.25);
+}
+
+.dashboard .filter-pill-role {
+  font-size: 0.72rem;
+  opacity: 0.8;
+  font-weight: 500;
+}
+
+.dashboard .filter-pill-count {
+  font-size: 0.6875rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.08);
+  font-weight: 700;
+}
+
+.dashboard .bot-filter-pill.active .filter-pill-count {
+  background: rgba(0, 0, 0, 0.2);
+  color: #000;
+}
+
+.dashboard .status-dot-mini {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dashboard .status-dot-mini.online {
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+}
+
+.dashboard .status-dot-mini.offline {
+  background: #94a3b8;
+}
+
+/* =============================================================================
+   Bots Breakdown Section & Cards Grid
+   ============================================================================= */
+.dashboard .bots-breakdown-section {
+  background: var(--bg-white);
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border);
+  margin-bottom: 2rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dashboard .section-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.dashboard .title-icon-primary {
+  color: var(--primary, #25d366);
+}
+
+.dashboard .bots-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.dashboard .bot-stat-card {
+  background: var(--bg-light);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  transition: all 0.2s ease;
+}
+
+.dashboard .bot-stat-card:hover {
+  border-color: var(--primary);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
+}
+
+.dashboard .bot-stat-card.is-connected {
+  border-left: 4px solid var(--primary, #25d366);
+}
+
+.dashboard .bot-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.dashboard .bot-card-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.dashboard .bot-avatar-box {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--primary, #25d366);
+  flex-shrink: 0;
+}
+
+.dashboard .bot-title-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.dashboard .bot-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dashboard .bot-main-name {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.dashboard .bot-conn-badge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  padding: 0.1rem 0.45rem;
+  border-radius: 9999px;
+}
+
+.dashboard .bot-conn-badge.online {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.dashboard .bot-conn-badge.offline {
+  background: rgba(148, 163, 184, 0.15);
+  color: #94a3b8;
+}
+
+.dashboard .bot-phone-sub {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.dashboard .bot-role-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: rgba(37, 211, 102, 0.12);
+  color: var(--primary-text, #25d366);
+  border: 1px solid rgba(37, 211, 102, 0.25);
+  padding: 0.25rem 0.6rem;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* Bot Card Metrics Grid */
+.dashboard .bot-card-metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.875rem 1rem;
+}
+
+.dashboard .bot-metric-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.dashboard .metric-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.dashboard .metric-value {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.dashboard .metric-value.code-font {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.75rem;
+}
+
+.dashboard .val-pill {
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.dashboard .val-pill.active {
+  background: rgba(37, 211, 102, 0.15);
+  color: var(--primary-text, #25d366);
+}
+
+.dashboard .val-pill.inactive {
+  background: var(--bg-light);
+  color: var(--text-muted);
+}
+
+/* Bot Card Footer Actions */
+.dashboard .bot-card-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.dashboard .btn-bot-action {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 6px;
+  background: var(--primary, #25d366);
+  color: #000;
+  border: 1px solid var(--primary, #25d366);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.dashboard .btn-bot-action:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 6px rgba(37, 211, 102, 0.3);
+}
+
+.dashboard .btn-bot-action.secondary {
+  background: var(--bg-white);
+  color: var(--text-primary);
+  border-color: var(--border);
+}
+
+.dashboard .btn-bot-action.secondary:hover {
+  background: var(--bg-light);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
+.dashboard .no-bots-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.dashboard .no-bots-card h3 {
+  margin: 0 0 0.5rem 0;
+  color: var(--text-primary);
+}
+
+.dashboard .no-bots-card p {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+}
