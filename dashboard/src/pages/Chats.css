@@ -1561,3 +1561,286 @@
   color: var(--text-muted);
   margin-top: 0.375rem;
 }
+
+/* =============================================================================
+   Enhanced Empty State when No Sessions are Connected
+   ============================================================================= */
+.chats-page .chats-empty-sessions-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3.5rem 2rem;
+  background: var(--bg-white);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+  max-width: 680px;
+  margin: 3rem auto 0 auto;
+  text-align: center;
+}
+
+.chats-page .empty-card-icon-wrap {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(37, 211, 102, 0.12);
+  color: var(--primary, #25d366);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 0 0 8px rgba(37, 211, 102, 0.05);
+}
+
+.chats-page .chats-empty-sessions-card h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0 0 0.5rem 0;
+}
+
+.chats-page .chats-empty-sessions-card p {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  max-width: 480px;
+  margin: 0 0 1.5rem 0;
+}
+
+.chats-page .empty-card-actions {
+  margin-bottom: 2rem;
+}
+
+.chats-page .btn-go-sessions {
+  padding: 0.75rem 1.5rem;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px rgba(37, 211, 102, 0.3);
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.chats-page .btn-go-sessions:hover {
+  transform: translateY(-2px);
+}
+
+.chats-page .empty-card-tips {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.chats-page .empty-tip-item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.chats-page .empty-tip-item .tip-num {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--primary, #25d366);
+  color: #000;
+  font-size: 0.72rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* =============================================================================
+   Sidebar Session Switcher & Status Dot
+   ============================================================================= */
+.chats-page .session-select-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+}
+
+.chats-page .session-select-title {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.chats-page .session-icon {
+  color: var(--primary, #25d366);
+}
+
+.chats-page .session-status-dot {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 9999px;
+}
+
+.chats-page .session-status-dot.online {
+  color: var(--primary-text, #25d366);
+  background: rgba(37, 211, 102, 0.12);
+}
+
+/* =============================================================================
+   Chat Category Pills (Sub-Filters)
+   ============================================================================= */
+.chats-page .chat-category-pills {
+  display: flex;
+  gap: 0.35rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.chats-page .cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.6rem;
+  background: var(--bg-light);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.chats-page .cat-pill:hover {
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+.chats-page .cat-pill.active {
+  background: var(--primary, #25d366);
+  border-color: var(--primary, #25d366);
+  color: #000;
+  font-weight: 700;
+}
+
+.chats-page .cat-pill.highlight-unread:not(.active) {
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.06);
+}
+
+.chats-page .cat-count {
+  font-size: 0.6875rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 9999px;
+  background: rgba(0, 0, 0, 0.08);
+  font-weight: 700;
+}
+
+.chats-page .cat-pill.active .cat-count {
+  background: rgba(0, 0, 0, 0.18);
+  color: #000;
+}
+
+.chats-page .cat-count.unread {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* =============================================================================
+   Chat Sections & Group Headers
+   ============================================================================= */
+.chats-page .chat-section-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.chats-page .chat-section-header {
+  padding: 0.4rem 1.25rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  background: var(--bg-light);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.chats-page .chat-section-header.badge-unread {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.05);
+  border-bottom-color: rgba(239, 68, 68, 0.2);
+}
+
+.chats-page .chat-section-header.badge-today {
+  color: var(--primary-text, #25d366);
+  background: rgba(37, 211, 102, 0.05);
+}
+
+/* Chat Item Avatar & Badges */
+.chats-page .chat-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.chats-page .avatar-unread-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #25d366;
+  border: 2px solid var(--bg-white);
+}
+
+.chats-page .chat-item-card.has-unread {
+  background: rgba(37, 211, 102, 0.03);
+}
+
+.chats-page .chat-item-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: 0.5rem;
+  flex-shrink: 0;
+}
+
+.chats-page .chat-ai-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  border: 1px solid rgba(139, 92, 246, 0.25);
+}
+
+.chats-page .chat-group-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  background: var(--bg-light);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}

@@ -1,10 +1,28 @@
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, CircleDashed, Loader2, Megaphone, Plus, Search } from 'lucide-react';
+import {
+  AlertCircle,
+  CircleDashed,
+  Loader2,
+  Megaphone,
+  Plus,
+  Search,
+  MessageSquare,
+  Users,
+  User,
+  BellRing,
+  Bot,
+  Layers,
+  Sparkles,
+  Smartphone,
+} from 'lucide-react';
 import type { UseQueryResult } from '@tanstack/react-query';
 import type { Channel, Chat, ContactStatusGroup, Session } from '../../services/api';
+import { getEffectiveAiConfig } from '../../services/aiAssistant';
 import ChatAvatar from './ChatAvatar';
 
 export type ChatsTab = 'chats' | 'channels' | 'status';
+export type ChatCategory = 'all' | 'unread' | 'individual' | 'group' | 'ai';
 
 interface ChatSidebarProps {
   sessions: Session[];
@@ -41,9 +59,7 @@ interface ChatSidebarProps {
   };
 }
 
-// LEFT SIDEBAR: session selector, Chats/Channels/Status tab bar, search, and the per-tab lists.
-// The page owns all queries/state; this component renders them and reports interactions up.
-function ChatSidebar({
+export function ChatSidebar({
   sessions,
   selectedSessionId,
   onSelectSession,
@@ -59,21 +75,111 @@ function ChatSidebar({
   statusTab,
 }: ChatSidebarProps) {
   const { t } = useTranslation();
+  const [chatCategory, setChatCategory] = useState<ChatCategory>('all');
 
   const formatLastMessageSnippet = (chat: Chat) => chat.lastMessage || '';
 
-  // Shared row markup for the Chats and Status lists — a plain function (not memoized) since it
-  // closes over render-scoped props (chatsTab.activeChatId, chatsTab.pictures) that already
-  // change every render.
+  // Calculate counts for section filters
+  const counts = useMemo(() => {
+    const list = chatsTab.chats;
+    const unread = list.filter(c => c.unreadCount > 0).length;
+    const individual = list.filter(c => c.kind === 'individual' || (!c.isGroup && c.kind !== 'group')).length;
+    const group = list.filter(c => c.isGroup || c.kind === 'group').length;
+    const ai = list.filter(c => {
+      if (!selectedSessionId) return false;
+      const conf = getEffectiveAiConfig(selectedSessionId, c.id);
+      return conf.enabled;
+    }).length;
+
+    return { all: list.length, unread, individual, group, ai };
+  }, [chatsTab.chats, selectedSessionId]);
+
+  // Filter chats by category
+  const filteredCategoryChats = useMemo(() => {
+    const list = chatsTab.chats;
+    switch (chatCategory) {
+      case 'unread':
+        return list.filter(c => c.unreadCount > 0);
+      case 'individual':
+        return list.filter(c => c.kind === 'individual' || (!c.isGroup && c.kind !== 'group'));
+      case 'group':
+        return list.filter(c => c.isGroup || c.kind === 'group');
+      case 'ai':
+        return list.filter(c => {
+          if (!selectedSessionId) return false;
+          const conf = getEffectiveAiConfig(selectedSessionId, c.id);
+          return conf.enabled;
+        });
+      case 'all':
+      default:
+        return list;
+    }
+  }, [chatsTab.chats, chatCategory, selectedSessionId]);
+
+  // Split into visual chronological / priority sections when viewing 'all'
+  const chatSections = useMemo(() => {
+    if (chatCategory !== 'all') {
+      return [{ title: null, items: filteredCategoryChats }];
+    }
+
+    const unreadList = filteredCategoryChats.filter(c => c.unreadCount > 0);
+    const readList = filteredCategoryChats.filter(c => (c.unreadCount || 0) === 0);
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const oneDayAgo = nowSec - 86400;
+
+    const todayList = readList.filter(c => (c.timestamp || 0) >= oneDayAgo);
+    const earlierList = readList.filter(c => (c.timestamp || 0) < oneDayAgo);
+
+    const sections: Array<{ title: string | null; icon?: string; badgeClass?: string; items: Chat[] }> = [];
+
+    if (unreadList.length > 0) {
+      sections.push({
+        title: `No Leídos (${unreadList.length})`,
+        icon: '🔴',
+        badgeClass: 'badge-unread',
+        items: unreadList,
+      });
+    }
+
+    if (todayList.length > 0) {
+      sections.push({
+        title: `Hoy / Recientes (${todayList.length})`,
+        icon: '💬',
+        badgeClass: 'badge-today',
+        items: todayList,
+      });
+    }
+
+    if (earlierList.length > 0) {
+      sections.push({
+        title: `Anteriores (${earlierList.length})`,
+        icon: '📅',
+        badgeClass: 'badge-earlier',
+        items: earlierList,
+      });
+    }
+
+    if (sections.length === 0 && filteredCategoryChats.length > 0) {
+      sections.push({ title: null, items: filteredCategoryChats });
+    }
+
+    return sections;
+  }, [filteredCategoryChats, chatCategory]);
+
+  const activeSessionObj = sessions.find(s => s.id === selectedSessionId);
+
   const renderChatRow = (chat: Chat) => {
     const isActive = chatsTab.activeChatId === chat.id;
+    const isAiActive = selectedSessionId && getEffectiveAiConfig(selectedSessionId, chat.id).enabled;
+
     return (
       <div
         key={chat.id}
         role="button"
         tabIndex={0}
         aria-current={isActive ? 'true' : undefined}
-        className={`chat-item-card ${isActive ? 'active' : ''}`}
+        className={`chat-item-card ${isActive ? 'active' : ''} ${chat.unreadCount > 0 ? 'has-unread' : ''}`}
         onClick={() => chatsTab.onSelectChat(chat)}
         onKeyDown={e => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -82,34 +188,48 @@ function ChatSidebar({
           }
         }}
       >
-        <ChatAvatar pictureUrl={chatsTab.pictures?.[chat.id]} kind={chat.kind} />
+        <div className="chat-avatar-wrap">
+          <ChatAvatar pictureUrl={chatsTab.pictures?.[chat.id]} kind={chat.kind} />
+          {chat.unreadCount > 0 && <span className="avatar-unread-dot" />}
+        </div>
 
         <div className="chat-item-info">
           <div className="chat-item-top">
             <span className="chat-item-name" title={chat.name || chat.id}>
               {chat.name || chat.id.split('@')[0]}
             </span>
-            {chat.kind !== 'individual' && chat.kind !== 'unknown' && (
-              <span className={`chat-kind-badge kind-${chat.kind}`}>{t(`chats.kind.${chat.kind}`)}</span>
-            )}
-            {/* Ternary, not `&&`: a chat with no messages carries timestamp 0, and React
-                renders the number 0 as text — so `0 && <span/>` painted a literal "0"
-                where the time belongs, on every such row. */}
             {chat.timestamp ? <span className="chat-item-time">{formatChatTime(chat.timestamp)}</span> : null}
           </div>
+
           <div className="chat-item-bottom">
             <span className="chat-item-snippet" title={formatLastMessageSnippet(chat)}>
               {formatLastMessageSnippet(chat) || <span className="no-message">{t('chats.noMessageYet')}</span>}
             </span>
-            {chat.unreadCount > 0 && (
-              <span
-                className="chat-unread-badge"
-                title={t('chats.unreadBadge', { count: chat.unreadCount })}
-                aria-label={t('chats.unreadBadge', { count: chat.unreadCount })}
-              >
-                {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
-              </span>
-            )}
+
+            <div className="chat-item-badges">
+              {isAiActive && (
+                <span className="chat-ai-pill" title="Asistente IA activo en este chat">
+                  <Sparkles size={11} />
+                  IA
+                </span>
+              )}
+
+              {chat.kind === 'group' && (
+                <span className="chat-group-pill" title="Grupo de WhatsApp">
+                  <Users size={11} />
+                </span>
+              )}
+
+              {chat.unreadCount > 0 && (
+                <span
+                  className="chat-unread-badge"
+                  title={t('chats.unreadBadge', { count: chat.unreadCount })}
+                  aria-label={t('chats.unreadBadge', { count: chat.unreadCount })}
+                >
+                  {chat.unreadCount > 99 ? '99+' : chat.unreadCount}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -119,11 +239,20 @@ function ChatSidebar({
   return (
     <aside className="chats-sidebar">
       <div className="sidebar-header-box">
-        {/* Session selector */}
+        {/* Session Switcher Card */}
         <div className="session-select-group">
-          <label className="form-label" htmlFor="csb-1">
-            {t('chats.sessionLabel')}
-          </label>
+          <div className="session-select-header">
+            <span className="session-select-title">
+              <Smartphone size={14} className="session-icon" />
+              <span>Línea / Bot Activo:</span>
+            </span>
+            {activeSessionObj && (
+              <span className="session-status-dot online" title="Sesión conectada">
+                ● Conectado
+              </span>
+            )}
+          </div>
+
           <select
             id="csb-1"
             value={selectedSessionId}
@@ -132,13 +261,13 @@ function ChatSidebar({
           >
             {sessions.map(s => (
               <option key={s.id} value={s.id}>
-                {s.name} ({s.phone || t('chats.noPhone')})
+                📱 {s.name} ({s.phone || 'Sin número asignado'})
               </option>
             ))}
           </select>
         </div>
 
-        {/* Chats / Channels / Status tabs */}
+        {/* Chats / Channels / Status segmented control */}
         <div className="chats-tabs" role="tablist">
           {(['chats', 'channels', 'status'] as const).map(tab => (
             <button
@@ -149,14 +278,17 @@ function ChatSidebar({
               className={`chats-tab ${activeTab === tab ? 'active' : ''}`}
               onClick={() => onSwitchTab(tab)}
             >
-              {t(`chats.tab.${tab}`)}
+              {tab === 'chats' && <MessageSquare size={14} />}
+              {tab === 'channels' && <Megaphone size={14} />}
+              {tab === 'status' && <CircleDashed size={14} />}
+              <span>{t(`chats.tab.${tab}`)}</span>
             </button>
           ))}
         </div>
 
         {/* Search bar */}
         <div className="chat-search-input">
-          <Search size={18} />
+          <Search size={16} />
           <input
             type="text"
             placeholder={t('chats.searchPlaceholder')}
@@ -164,6 +296,61 @@ function ChatSidebar({
             onChange={e => onSearchQueryChange(e.target.value)}
           />
         </div>
+
+        {/* Sub-Filters by Category / Section */}
+        {activeTab === 'chats' && (
+          <div className="chat-category-pills">
+            <button
+              type="button"
+              className={`cat-pill ${chatCategory === 'all' ? 'active' : ''}`}
+              onClick={() => setChatCategory('all')}
+            >
+              <Layers size={13} />
+              <span>Todos</span>
+              <span className="cat-count">{counts.all}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`cat-pill ${chatCategory === 'unread' ? 'active' : ''} ${counts.unread > 0 ? 'highlight-unread' : ''}`}
+              onClick={() => setChatCategory('unread')}
+            >
+              <BellRing size={13} />
+              <span>No leídos</span>
+              {counts.unread > 0 && <span className="cat-count unread">{counts.unread}</span>}
+            </button>
+
+            <button
+              type="button"
+              className={`cat-pill ${chatCategory === 'individual' ? 'active' : ''}`}
+              onClick={() => setChatCategory('individual')}
+            >
+              <User size={13} />
+              <span>Directos</span>
+              <span className="cat-count">{counts.individual}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`cat-pill ${chatCategory === 'group' ? 'active' : ''}`}
+              onClick={() => setChatCategory('group')}
+            >
+              <Users size={13} />
+              <span>Grupos</span>
+              <span className="cat-count">{counts.group}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`cat-pill ${chatCategory === 'ai' ? 'active' : ''}`}
+              onClick={() => setChatCategory('ai')}
+            >
+              <Bot size={13} />
+              <span>Bot IA</span>
+              {counts.ai > 0 && <span className="cat-count">{counts.ai}</span>}
+            </button>
+          </div>
+        )}
 
         {/* Compose a new status — only meaningful on the Status tab. */}
         {activeTab === 'status' && (
@@ -175,14 +362,28 @@ function ChatSidebar({
 
         {/* Start a new chat / AI assistant conversation */}
         {activeTab === 'chats' && onNewChat && (
-          <button type="button" className="btn-primary new-chat-trigger" onClick={onNewChat} style={{ width: '100%', marginTop: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.375rem', padding: '0.625rem', borderRadius: '8px', fontWeight: 600 }}>
+          <button
+            type="button"
+            className="btn-primary new-chat-trigger"
+            onClick={onNewChat}
+            style={{
+              width: '100%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.375rem',
+              padding: '0.625rem',
+              borderRadius: '8px',
+              fontWeight: 600,
+            }}
+          >
             <Plus size={16} />
             {t('chats.newChat', 'Nuevo Chat / Asistente')}
           </button>
         )}
       </div>
 
-      {/* Chat list */}
+      {/* Chat list with separate visual sections */}
       {activeTab === 'chats' && (
         <div className="chats-list">
           {chatsTab.loading ? (
@@ -190,19 +391,29 @@ function ChatSidebar({
               <Loader2 className="animate-spin" size={24} />
               <span>{t('chats.loadingChats')}</span>
             </div>
-          ) : chatsTab.chats.length === 0 ? (
+          ) : filteredCategoryChats.length === 0 ? (
             <div className="chats-list-empty">
-              <span>{t('chats.empty')}</span>
+              <MessageSquare size={32} style={{ opacity: 0.35, marginBottom: '0.5rem' }} />
+              <span>No hay conversaciones en esta sección</span>
             </div>
           ) : (
-            chatsTab.chats.map(renderChatRow)
+            chatSections.map((section, sIdx) => (
+              <div key={section.title || sIdx} className="chat-section-group">
+                {section.title && (
+                  <div className={`chat-section-header ${section.badgeClass || ''}`}>
+                    <span>
+                      {section.icon} {section.title}
+                    </span>
+                  </div>
+                )}
+                {section.items.map(renderChatRow)}
+              </div>
+            ))
           )}
         </div>
       )}
 
-      {/* Channels list — wwjs-only (newsletter/channel API isn't implemented on Baileys, which
-          throws 501 for both listing and reading). channelsQuery is gated off entirely on that
-          engine, so the branch order below never depends on a request having actually run. */}
+      {/* Channels list */}
       {activeTab === 'channels' && (
         <div className="chats-list">
           {channelsTab.engineLoading ? (
@@ -263,8 +474,7 @@ function ChatSidebar({
         </div>
       )}
 
-      {/* Status list — per-contact status groups read from the 24h store. Not engine-gated:
-          both engines now have status content. */}
+      {/* Status list */}
       {activeTab === 'status' && (
         <div className="chats-list">
           {statusTab.loading ? (

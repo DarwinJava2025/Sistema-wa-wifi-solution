@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo, useLayoutEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trans, useTranslation } from 'react-i18next';
+import { useTranslation } from 'react-i18next';
 import { nextReconnectState } from '../utils/reconnectState';
 import { applyIncomingToChatList } from '../utils/chatList';
 import { filterChats, filterChannels, groupStatusesByContact } from '../utils/chatFilters';
@@ -110,6 +111,7 @@ const statusFontStyle = (font?: number): { fontFamily?: string; fontWeight?: num
 
 export function Chats() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   useDocumentTitle(t('nav.chats'));
   const { error: showErrorToast, warning: showWarningToast } = useToast();
 
@@ -867,14 +869,37 @@ export function Chats() {
           <p>{t('common.loading')}</p>
         </div>
       ) : sessions.length === 0 ? (
-        <div className="chats-error-state">
-          <AlertCircle size={48} className="text-warn" />
-          <h3>{t('chats.noSessionsTitle')}</h3>
+        <div className="chats-empty-sessions-card">
+          <div className="empty-card-icon-wrap">
+            <Bot size={40} />
+          </div>
+          <h3>Sin sesiones de WhatsApp conectadas</h3>
           <p>
-            <Trans i18nKey="chats.noSessionsDesc">
-              Please connect a WhatsApp session from the <strong>Sessions</strong> menu first to use the chat feature.
-            </Trans>
+            Para ver, filtrar y responder chats en tiempo real o activar el asistente IA por secciones, primero debes iniciar o vincular una sesión escaneando el código QR.
           </p>
+          <div className="empty-card-actions">
+            <button
+              type="button"
+              className="btn-primary btn-go-sessions"
+              onClick={() => navigate('/sessions')}
+            >
+              🚀 Ir a Sesiones y Conectar Bot
+            </button>
+          </div>
+          <div className="empty-card-tips">
+            <div className="empty-tip-item">
+              <span className="tip-num">1</span>
+              <span>Crea tu sesión o bot en el módulo de <strong>Sesiones</strong>.</span>
+            </div>
+            <div className="empty-tip-item">
+              <span className="tip-num">2</span>
+              <span>Escanea el código QR desde tu app de WhatsApp.</span>
+            </div>
+            <div className="empty-tip-item">
+              <span className="tip-num">3</span>
+              <span>Tus conversaciones aparecerán aquí organizadas por secciones y filtros.</span>
+            </div>
+          </div>
         </div>
       ) : (
         <div className={`chats-layout ${activeChat || activeChannel || activeStatusGroup ? 'has-active-chat' : ''}`}>
