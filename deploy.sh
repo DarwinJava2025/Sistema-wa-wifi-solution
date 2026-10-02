@@ -3,7 +3,7 @@
 # ==========================================
 # Configuración del servidor y proyecto
 # ==========================================
-SERVER="alobo@192.168.90.88"
+SERVER="alobo@10.124.124.27"
 REMOTE_PATH="/var/opt"
 PROJECT_DIR="sistema-wa-wifi-solution"
 ZIP_NAME="sistema-wa-wifi-solution.zip"
