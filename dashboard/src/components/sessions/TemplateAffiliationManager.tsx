@@ -16,12 +16,16 @@ import {
   FileText,
   MessageSquare,
   Bot,
+  Layers,
+  ClipboardPaste,
 } from 'lucide-react';
 import {
   type TemplateTriggerMapping,
   type TriggerIntentType,
   type AiRoleType,
+  AI_ROLES,
   getDefaultTemplateTriggers,
+  parseMetaTemplateInput,
 } from '../../services/aiAssistant';
 import './TemplateAffiliationManager.css';
 
@@ -87,8 +91,16 @@ export function TemplateAffiliationManager({
   const [editingTrigger, setEditingTrigger] = useState<TemplateTriggerMapping | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [selectedIntentFilter, setSelectedIntentFilter] = useState<string>('all');
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('all');
+  const [selectedModeFilter, setSelectedModeFilter] = useState<string>('all');
   const [keywordInput, setKeywordInput] = useState('');
   const [activePreviewId, setActivePreviewId] = useState<string | null>(triggers[0]?.id || null);
+
+  // Meta Template Import Modal state
+  const [isMetaModalOpen, setIsMetaModalOpen] = useState(false);
+  const [metaRawInput, setMetaRawInput] = useState('');
+  const [metaTargetRole, setMetaTargetRole] = useState<AiRoleType | 'all'>('all');
+  const [metaTargetMode, setMetaTargetMode] = useState<'send_template' | 'ai_hybrid' | 'pure_ai'>('send_template');
 
   // Load saved local custom templates from localStorage
   const savedCustomTemplates = (() => {
@@ -120,10 +132,12 @@ export function TemplateAffiliationManager({
   };
 
   const handleStartCreate = () => {
+    const nextNum = triggers.length > 0 ? Math.max(...triggers.map(t => t.templateNumber || 100)) + 1 : 101;
     const newTrig: TemplateTriggerMapping = {
       id: `trig_${Date.now()}`,
+      templateNumber: nextNum,
       enabled: true,
-      name: 'Nueva Plantilla Afiliada',
+      name: `Nueva Plantilla #${nextNum}`,
       intentType: 'greeting',
       keywords: ['hola', 'bienvenida'],
       roleAffiliation: 'all',
@@ -134,6 +148,7 @@ export function TemplateAffiliationManager({
       footer: `${businessName} • Conectividad Total`,
       buttons: [{ text: 'Ver Opciones', type: 'QUICK_REPLY', value: 'OPCIONES' }],
       action: 'send_template',
+      source: 'custom',
       dynamicAiMatch: true,
     };
     setEditingTrigger(newTrig);
@@ -187,12 +202,48 @@ export function TemplateAffiliationManager({
     });
   };
 
+  const handleImportMetaTemplate = () => {
+    if (!metaRawInput.trim()) return;
+    const parsed = parseMetaTemplateInput(metaRawInput);
+    if (!parsed) return;
+
+    const nextNum = triggers.length > 0 ? Math.max(...triggers.map(t => t.templateNumber || 100)) + 1 : 101;
+    const newTrig: TemplateTriggerMapping = {
+      id: `trig_meta_${Date.now()}`,
+      templateNumber: nextNum,
+      enabled: true,
+      name: `${parsed.name} [#${nextNum}]`,
+      intentType: 'custom',
+      keywords: parsed.variables.length > 0 ? [parsed.name.toLowerCase().replace(/_/g, ' ')] : ['meta', parsed.name.toLowerCase()],
+      roleAffiliation: metaTargetRole,
+      templateName: parsed.name,
+      headerType: parsed.headerType,
+      headerText: parsed.headerText,
+      mediaUrl: parsed.mediaUrl,
+      body: parsed.body,
+      footer: parsed.footer,
+      buttons: parsed.buttons,
+      action: metaTargetMode,
+      source: 'meta',
+      metaCategory: parsed.category,
+      dynamicAiMatch: true,
+    };
+
+    onChange([...triggers, newTrig]);
+    setActivePreviewId(newTrig.id);
+    setIsMetaModalOpen(false);
+    setMetaRawInput('');
+  };
+
   const filteredTriggers = triggers.filter(t => {
-    if (selectedIntentFilter === 'all') return true;
-    return t.intentType === selectedIntentFilter;
+    if (selectedIntentFilter !== 'all' && t.intentType !== selectedIntentFilter) return false;
+    if (selectedRoleFilter !== 'all' && t.roleAffiliation !== selectedRoleFilter && t.roleAffiliation !== 'all') return false;
+    if (selectedModeFilter !== 'all' && t.action !== selectedModeFilter) return false;
+    return true;
   });
 
   const previewTrigger = triggers.find(t => t.id === activePreviewId) || triggers[0];
+  const parsedMetaPreview = metaRawInput.trim() ? parseMetaTemplateInput(metaRawInput) : null;
 
   return (
     <div className="template-affiliation-container">
@@ -205,11 +256,19 @@ export function TemplateAffiliationManager({
           <div>
             <h3>Afiliación de Plantillas & Triggers para el Chatbot</h3>
             <p className="affiliation-subtitle">
-              Asocia plantillas generadas (saludo, saldo, planes, soporte) a números y roles. La IA decidirá inteligentemente cuándo enviar la plantilla o generar respuesta natural.
+              Asocia plantillas numeradas (ej. <code>#101</code>, <code>#102</code>) a roles específicos (Soporte, Ventas, Cobranzas). Divide cuándo responder con <strong>Plantilla Oficial</strong> o con <strong>Inteligencia Artificial</strong>.
             </p>
           </div>
         </div>
         <div className="affiliation-actions-row">
+          <button
+            type="button"
+            className="btn-affiliation-meta"
+            onClick={() => setIsMetaModalOpen(true)}
+            title="Importar plantilla de WhatsApp Business / Meta Graph API"
+          >
+            <ClipboardPaste size={15} /> Pegar Plantilla Meta
+          </button>
           <button className="btn-affiliation-reset" onClick={handleResetDefaults} title="Restablecer triggers predeterminados según el rol">
             <RotateCcw size={14} /> Predeterminados
           </button>
@@ -219,26 +278,94 @@ export function TemplateAffiliationManager({
         </div>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="affiliation-filter-bar">
-        <button
-          className={`filter-tab ${selectedIntentFilter === 'all' ? 'active' : ''}`}
-          onClick={() => setSelectedIntentFilter('all')}
-        >
-          Todos ({triggers.length})
-        </button>
-        {INTENT_OPTIONS.map(opt => {
-          const count = triggers.filter(t => t.intentType === opt.type).length;
-          return (
+      {/* Multi-Level Filter Controls */}
+      <div className="affiliation-advanced-filters">
+        {/* Row 1: Intent Categories */}
+        <div className="affiliation-filter-bar">
+          <button
+            className={`filter-tab ${selectedIntentFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setSelectedIntentFilter('all')}
+          >
+            Todas ({triggers.length})
+          </button>
+          {INTENT_OPTIONS.map(opt => {
+            const count = triggers.filter(t => t.intentType === opt.type).length;
+            return (
+              <button
+                key={opt.type}
+                className={`filter-tab ${selectedIntentFilter === opt.type ? 'active' : ''}`}
+                onClick={() => setSelectedIntentFilter(opt.type)}
+              >
+                {opt.label} ({count})
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Row 2: Secondary Quick Filters (Role & Mode) */}
+        <div className="affiliation-subfilter-row">
+          <div className="filter-group-inline">
+            <span className="filter-lbl"><Layers size={13} /> Filtrar por Rol:</span>
             <button
-              key={opt.type}
-              className={`filter-tab ${selectedIntentFilter === opt.type ? 'active' : ''}`}
-              onClick={() => setSelectedIntentFilter(opt.type)}
+              className={`pill-filter-btn ${selectedRoleFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setSelectedRoleFilter('all')}
             >
-              {opt.label} ({count})
+              Todos los Roles
             </button>
-          );
-        })}
+            <button
+              className={`pill-filter-btn ${selectedRoleFilter === 'support' ? 'active' : ''}`}
+              onClick={() => setSelectedRoleFilter('support')}
+            >
+              🛠️ Soporte
+            </button>
+            <button
+              className={`pill-filter-btn ${selectedRoleFilter === 'sales' ? 'active' : ''}`}
+              onClick={() => setSelectedRoleFilter('sales')}
+            >
+              💼 Ventas
+            </button>
+            <button
+              className={`pill-filter-btn ${selectedRoleFilter === 'billing' ? 'active' : ''}`}
+              onClick={() => setSelectedRoleFilter('billing')}
+            >
+              💳 Cobranzas
+            </button>
+            <button
+              className={`pill-filter-btn ${selectedRoleFilter === 'customer_care' ? 'active' : ''}`}
+              onClick={() => setSelectedRoleFilter('customer_care')}
+            >
+              🤝 Atención
+            </button>
+          </div>
+
+          <div className="filter-group-inline">
+            <span className="filter-lbl"><Bot size={13} /> Modo de Respuesta:</span>
+            <button
+              className={`pill-filter-btn ${selectedModeFilter === 'all' ? 'active' : ''}`}
+              onClick={() => setSelectedModeFilter('all')}
+            >
+              Todos
+            </button>
+            <button
+              className={`pill-filter-btn ${selectedModeFilter === 'send_template' ? 'active' : ''}`}
+              onClick={() => setSelectedModeFilter('send_template')}
+            >
+              ⚡ Solo Plantilla
+            </button>
+            <button
+              className={`pill-filter-btn ${selectedModeFilter === 'ai_hybrid' ? 'active' : ''}`}
+              onClick={() => setSelectedModeFilter('ai_hybrid')}
+            >
+              ✨ Híbrido IA
+            </button>
+            <button
+              className={`pill-filter-btn ${selectedModeFilter === 'pure_ai' ? 'active' : ''}`}
+              onClick={() => setSelectedModeFilter('pure_ai')}
+            >
+              🤖 Solo IA
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Main Grid: Triggers List + Live WhatsApp Bubble Preview */}
@@ -248,7 +375,7 @@ export function TemplateAffiliationManager({
           {filteredTriggers.length === 0 ? (
             <div className="affiliation-empty">
               <Sparkles size={32} />
-              <p>No hay plantillas afiliadas en esta categoría.</p>
+              <p>No hay plantillas afiliadas con los filtros seleccionados.</p>
               <button className="btn-affiliation-add" onClick={handleStartCreate}>
                 <Plus size={16} /> Crear primer Trigger
               </button>
@@ -257,6 +384,7 @@ export function TemplateAffiliationManager({
             filteredTriggers.map(trig => {
               const intentMeta = INTENT_OPTIONS.find(i => i.type === trig.intentType) || INTENT_OPTIONS[0];
               const isSelected = previewTrigger?.id === trig.id;
+              const roleInfo = trig.roleAffiliation && trig.roleAffiliation !== 'all' ? AI_ROLES[trig.roleAffiliation] : null;
 
               return (
                 <div
@@ -268,7 +396,10 @@ export function TemplateAffiliationManager({
                     <div className="card-intent-info">
                       <span className="intent-badge-icon">{intentMeta.icon}</span>
                       <div>
-                        <h4 className="card-title">{trig.name}</h4>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span className="tpl-number-badge">#{trig.templateNumber || 100}</span>
+                          <h4 className="card-title">{trig.name}</h4>
+                        </div>
                         <span className="card-tpl-name">
                           Plantilla: <strong>{trig.templateName}</strong>
                         </span>
@@ -288,6 +419,11 @@ export function TemplateAffiliationManager({
 
                   {/* Metadata Tags */}
                   <div className="card-tags-row">
+                    {/* Role affiliation tag */}
+                    <span className="meta-tag role-badge">
+                      {roleInfo ? `${roleInfo.icon} ${roleInfo.name}` : '🌐 Todos los Roles'}
+                    </span>
+
                     <span className="meta-tag header-tag">
                       {trig.headerType === 'image' && <ImageIcon size={12} />}
                       {trig.headerType === 'video' && <Video size={12} />}
@@ -297,13 +433,13 @@ export function TemplateAffiliationManager({
                       {trig.headerType.toUpperCase()}
                     </span>
 
-                    <span className={`meta-tag action-tag ${trig.action === 'send_template' ? 'direct' : 'hybrid'}`}>
-                      {trig.action === 'send_template' ? '⚡ Envío Directo' : '✨ Híbrido IA'}
+                    <span className={`meta-tag action-tag ${trig.action === 'send_template' ? 'direct' : trig.action === 'pure_ai' ? 'ai-only' : 'hybrid'}`}>
+                      {trig.action === 'send_template' ? '⚡ Solo Plantilla' : trig.action === 'pure_ai' ? '🤖 Solo IA' : '✨ Híbrido IA'}
                     </span>
 
-                    {trig.dynamicAiMatch && (
-                      <span className="meta-tag ai-tag">
-                        <Bot size={12} /> Detección IA Activa
+                    {trig.source === 'meta' && (
+                      <span className="meta-tag meta-badge">
+                        📱 Meta WhatsApp
                       </span>
                     )}
 
@@ -316,7 +452,7 @@ export function TemplateAffiliationManager({
 
                   {/* Keywords pills */}
                   <div className="card-keywords-container">
-                    <span className="keywords-label">Palabras clave / Triggers:</span>
+                    <span className="keywords-label">Palabras clave de activación:</span>
                     <div className="keywords-wrap">
                       {trig.keywords.map((kw, i) => (
                         <span key={i} className="keyword-chip">
@@ -439,6 +575,10 @@ export function TemplateAffiliationManager({
                   ⚡ <strong>Disparo Automático:</strong> Se enviará cuando un usuario escriba{' '}
                   <code>{previewTrigger.keywords.slice(0, 4).join(', ')}</code> o por clasificación semántica IA.
                 </p>
+                <div style={{ marginTop: '6px', fontSize: '0.78rem', color: '#94a3b8' }}>
+                  <span>🔢 Código: <strong>#{previewTrigger.templateNumber || 100}</strong></span> • 
+                  <span> Modo: <strong>{previewTrigger.action === 'send_template' ? 'Solo Plantilla' : previewTrigger.action === 'pure_ai' ? 'Solo IA' : 'Híbrido IA'}</strong></span>
+                </div>
               </div>
             </div>
           ) : (
@@ -449,17 +589,108 @@ export function TemplateAffiliationManager({
         </div>
       </div>
 
+      {/* Meta WhatsApp Template Import Modal */}
+      {isMetaModalOpen && (
+        <div className="trigger-modal-overlay" onClick={() => setIsMetaModalOpen(false)}>
+          <div className="trigger-modal-content meta-import-dialog" onClick={e => e.stopPropagation()}>
+            <div className="trigger-modal-header">
+              <div className="header-icon" style={{ background: 'rgba(59, 130, 246, 0.2)', color: '#60a5fa' }}>
+                <ClipboardPaste size={20} />
+              </div>
+              <div>
+                <h4>Importar / Pegar Plantilla de Meta WhatsApp</h4>
+                <p>Pega el JSON de la API de Meta, WhatsApp Business Manager o el texto con variables.</p>
+              </div>
+              <button className="btn-close-modal" onClick={() => setIsMetaModalOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="trigger-modal-body">
+              <div className="form-group">
+                <label>Pega aquí el JSON o Texto de la Plantilla de Meta:</label>
+                <textarea
+                  rows={6}
+                  value={metaRawInput}
+                  onChange={e => setMetaRawInput(e.target.value)}
+                  placeholder={`Ejemplo JSON de Meta Cloud API:\n{\n  "name": "aviso_mantenimiento",\n  "category": "UTILITY",\n  "components": [\n    { "type": "HEADER", "format": "TEXT", "text": "🛠️ AVISO DE SOPORTE" },\n    { "type": "BODY", "text": "Hola {{1}}, le informamos que el servicio en {{2}} está activo." },\n    { "type": "FOOTER", "text": "WiFi Solution Pro" }\n  ]\n}`}
+                />
+              </div>
+
+              {parsedMetaPreview && (
+                <div className="meta-parsed-preview-box">
+                  <div className="meta-preview-header">
+                    <Sparkles size={14} />
+                    <span>Plantilla Parseada Exitosamente: <strong>{parsedMetaPreview.name}</strong></span>
+                  </div>
+                  <div className="meta-preview-details">
+                    <p><strong>Tipo Encabezado:</strong> {parsedMetaPreview.headerType.toUpperCase()}</p>
+                    {parsedMetaPreview.headerText && <p><strong>Encabezado:</strong> {parsedMetaPreview.headerText}</p>}
+                    <p><strong>Cuerpo:</strong> {parsedMetaPreview.body}</p>
+                    {parsedMetaPreview.footer && <p><strong>Pie:</strong> {parsedMetaPreview.footer}</p>}
+                    {parsedMetaPreview.variables.length > 0 && (
+                      <p><strong>Variables Detectadas:</strong> {parsedMetaPreview.variables.map(v => `{{${v}}}`).join(', ')}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label>Asignar al Rol del Bot:</label>
+                  <select
+                    value={metaTargetRole}
+                    onChange={e => setMetaTargetRole(e.target.value as any)}
+                  >
+                    <option value="all">🌐 Todos los Roles</option>
+                    <option value="support">🛠️ Soporte Técnico</option>
+                    <option value="sales">💼 Ventas y Planes</option>
+                    <option value="billing">💳 Cobranzas y Facturación</option>
+                    <option value="customer_care">🤝 Atención al Cliente</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>Modo de Respuesta:</label>
+                  <select
+                    value={metaTargetMode}
+                    onChange={e => setMetaTargetMode(e.target.value as any)}
+                  >
+                    <option value="send_template">⚡ Solo Plantilla (Envío exacto)</option>
+                    <option value="ai_hybrid">✨ Híbrido IA (Plantilla + Razonamiento)</option>
+                    <option value="pure_ai">🤖 Solo IA</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <div className="trigger-modal-footer">
+              <button className="btn-cancel" onClick={() => setIsMetaModalOpen(false)}>
+                Cancelar
+              </button>
+              <button
+                className="btn-save"
+                onClick={handleImportMetaTemplate}
+                disabled={!metaRawInput.trim()}
+              >
+                <Check size={16} /> Importar y Activar en Bot
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit / Create Trigger Modal */}
       {editingTrigger && (
-        <div className="trigger-modal-overlay">
-          <div className="trigger-modal-content">
+        <div className="trigger-modal-overlay" onClick={() => setEditingTrigger(null)}>
+          <div className="trigger-modal-content" onClick={e => e.stopPropagation()}>
             <div className="trigger-modal-header">
               <div className="header-icon">
                 <Sliders size={20} />
               </div>
               <div>
-                <h4>{isCreating ? 'Afiliar Nueva Plantilla a Trigger' : 'Editar Configuración de Trigger'}</h4>
-                <p>Configura las palabras clave, plantilla asociada y comportamiento del chatbot.</p>
+                <h4>{isCreating ? 'Afiliar Nueva Plantilla a Trigger' : `Editar Plantilla #${editingTrigger.templateNumber || 100}`}</h4>
+                <p>Configura número, rol asociado, palabras clave y modo de respuesta (Plantilla vs IA).</p>
               </div>
               <button className="btn-close-modal" onClick={() => setEditingTrigger(null)}>
                 <X size={18} />
@@ -490,16 +721,44 @@ export function TemplateAffiliationManager({
                 </div>
               )}
 
-              {/* Form Grid */}
-              <div className="form-grid-2col">
+              {/* Row 1: Name, Number and Role */}
+              <div className="form-grid-3col">
                 <div className="form-group">
-                  <label>Nombre Identificador del Trigger:</label>
+                  <label>Número / Código:</label>
+                  <input
+                    type="number"
+                    value={editingTrigger.templateNumber || 101}
+                    onChange={e => setEditingTrigger({ ...editingTrigger, templateNumber: parseInt(e.target.value, 10) || 100 })}
+                    placeholder="101"
+                  />
+                </div>
+
+                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                  <label>Nombre Identificador:</label>
                   <input
                     type="text"
                     value={editingTrigger.name}
                     onChange={e => setEditingTrigger({ ...editingTrigger, name: e.target.value })}
                     placeholder="Ej: Saludo de Bienvenida Clientes"
                   />
+                </div>
+              </div>
+
+              {/* Row 2: Role & Category */}
+              <div className="form-grid-2col">
+                <div className="form-group">
+                  <label>Asociar a Rol / Departamento:</label>
+                  <select
+                    value={editingTrigger.roleAffiliation || 'all'}
+                    onChange={e => setEditingTrigger({ ...editingTrigger, roleAffiliation: e.target.value as any })}
+                  >
+                    <option value="all">🌐 Todos los Roles / Menú Principal</option>
+                    <option value="support">🛠️ Soporte Técnico</option>
+                    <option value="sales">💼 Ventas y Cotizaciones</option>
+                    <option value="billing">💳 Cobranzas y Facturación</option>
+                    <option value="customer_care">🤝 Atención al Cliente</option>
+                    <option value="custom">🏢 Rol Personalizado</option>
+                  </select>
                 </div>
 
                 <div className="form-group">
@@ -560,18 +819,19 @@ export function TemplateAffiliationManager({
               {/* Action Behavior & Dynamic AI */}
               <div className="form-grid-2col">
                 <div className="form-group">
-                  <label>Comportamiento de Respuesta:</label>
+                  <label>Comportamiento de Respuesta (¿Plantilla o IA?):</label>
                   <select
                     value={editingTrigger.action}
                     onChange={e =>
                       setEditingTrigger({
                         ...editingTrigger,
-                        action: e.target.value as 'send_template' | 'ai_hybrid',
+                        action: e.target.value as any,
                       })
                     }
                   >
-                    <option value="send_template">⚡ Enviar Plantilla Oficial Directa (Recomendado)</option>
-                    <option value="ai_hybrid">✨ Híbrido: IA redacta usando la plantilla como base</option>
+                    <option value="send_template">⚡ Solo Plantilla (Envía el formato exacto)</option>
+                    <option value="ai_hybrid">✨ Híbrido IA (Plantilla como estructura + razonamiento IA)</option>
+                    <option value="pure_ai">🤖 Solo IA (Respuesta libre según el prompt del rol)</option>
                   </select>
                 </div>
 
@@ -669,7 +929,7 @@ export function TemplateAffiliationManager({
                 Cancelar
               </button>
               <button className="btn-save" onClick={handleSaveTrigger}>
-                <Check size={16} /> Guardar Trigger & Afiliación
+                <Check size={16} /> Guardar Plantilla #{editingTrigger.templateNumber || 100}
               </button>
             </div>
           </div>

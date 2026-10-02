@@ -35,6 +35,7 @@ export const queryKeys = {
   currentEngine: ['engines', 'current'] as const,
   statsOverview: ['stats', 'overview'] as const,
   statsMessages: (period: string) => ['stats', 'messages', period] as const,
+  sessionDetailedStats: (sessionId: string) => ['stats', 'session', sessionId] as const,
 };
 
 // ── Session Queries ───────────────────────────────────────────────────
@@ -344,6 +345,16 @@ export function useStatsMessagesQuery(period: StatsPeriod) {
     queryKey: queryKeys.statsMessages(period),
     queryFn: () => statsApi.getMessages(period),
     staleTime: 30_000,
+    retry: false,
+  });
+}
+
+export function useSessionDetailedStatsQuery(sessionId?: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.sessionDetailedStats(sessionId || ''),
+    queryFn: () => statsApi.getSessionStats(sessionId!),
+    enabled: enabled && Boolean(sessionId) && sessionId !== 'all',
+    staleTime: 15_000,
     retry: false,
   });
 }

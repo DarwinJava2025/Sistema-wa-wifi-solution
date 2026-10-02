@@ -1,0 +1,9 @@
+{
+  "host": "192.168.90.88",
+  "port": 22,
+  "username": "alobo",
+  "password": "6ug-2;q3,1Or",
+  "remote_dir": "/var/opt/sistema-wa-wifi-solution",
+  "service_name": "sistema-wa-wifi",
+  "app_port": 2785
+}

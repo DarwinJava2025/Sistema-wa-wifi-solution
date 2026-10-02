@@ -1045,6 +1045,118 @@
   border-radius: 4px;
 }
 
+/* Wide n8n Studio Canvas */
+.canvas-interactive-area.n8n-canvas-wide {
+  width: 900px;
+  height: 740px;
+  min-width: 900px;
+  min-height: 740px;
+}
+
+/* Branch Nodes */
+.studio-node.branch-node {
+  background: #0d1527;
+  border: 1px solid #1e293b;
+  padding: 0.65rem 0.85rem;
+  border-radius: 10px;
+}
+
+.studio-node.branch-node .node-main-header {
+  margin-bottom: 0.25rem;
+}
+
+.branch-title-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
+}
+
+.template-num-badge {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.725rem;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: #1e293b;
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+}
+
+.branch-name {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.studio-node.branch-node.branch-green {
+  border-left: 3px solid #10b981;
+}
+
+.studio-node.branch-node.branch-green:hover {
+  border-color: #10b981;
+}
+
+.studio-node.branch-node.branch-amber {
+  border-left: 3px solid #f59e0b;
+}
+
+.studio-node.branch-node.branch-amber:hover {
+  border-color: #f59e0b;
+}
+
+.studio-node.branch-node.branch-red {
+  border-left: 3px solid #ef4444;
+}
+
+.studio-node.branch-node.branch-red:hover {
+  border-color: #ef4444;
+}
+
+.studio-node.branch-node.branch-purple {
+  border-left: 3px solid #8b5cf6;
+}
+
+.studio-node.branch-node.branch-purple:hover {
+  border-color: #8b5cf6;
+}
+
+/* Node Badge Colors */
+.node-badge-tag.cyan {
+  color: #06b6d4;
+  background: rgba(6, 182, 212, 0.12);
+  border: 1px solid rgba(6, 182, 212, 0.25);
+}
+
+.node-badge-tag.emerald {
+  color: #10b981;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.node-badge-tag.rose {
+  color: #f43f5e;
+  background: rgba(244, 63, 94, 0.12);
+  border: 1px solid rgba(244, 63, 94, 0.25);
+}
+
+.node-icon-wrapper.cyan {
+  background: rgba(6, 182, 212, 0.15);
+  color: #06b6d4;
+}
+
+/* Branch Glow on Simulation */
+.branch-active-glow {
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.6) !important;
+  border-color: #38bdf8 !important;
+  transform: translateY(-3px) scale(1.02);
+}
+
+.svg-wire.highlight-branch {
+  stroke-width: 4 !important;
+  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.8));
+}
+
 /* Responsiveness */
 @media (max-width: 1024px) {
   .workflow-studio-body {

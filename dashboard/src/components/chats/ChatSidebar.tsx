@@ -22,7 +22,7 @@ import { getEffectiveAiConfig } from '../../services/aiAssistant';
 import ChatAvatar from './ChatAvatar';
 
 export type ChatsTab = 'chats' | 'channels' | 'status';
-export type ChatCategory = 'all' | 'unread' | 'individual' | 'group' | 'ai';
+export type ChatCategory = 'active' | 'unread' | 'ai' | 'individual' | 'group' | 'all';
 
 interface ChatSidebarProps {
   sessions: Session[];
@@ -33,7 +33,6 @@ interface ChatSidebarProps {
   searchQuery: string;
   onSearchQueryChange: (query: string) => void;
   onComposeStatus: () => void;
-  onNewChat?: () => void;
   formatChatTime: (timestamp?: number) => string;
   chatsTab: {
     loading: boolean;
@@ -68,57 +67,69 @@ export function ChatSidebar({
   searchQuery,
   onSearchQueryChange,
   onComposeStatus,
-  onNewChat,
   formatChatTime,
   chatsTab,
   channelsTab,
   statusTab,
 }: ChatSidebarProps) {
   const { t } = useTranslation();
-  const [chatCategory, setChatCategory] = useState<ChatCategory>('all');
+  // Default to showing only chats with real message interactions (not empty synced contacts)
+  const [chatCategory, setChatCategory] = useState<ChatCategory>('active');
 
   const formatLastMessageSnippet = (chat: Chat) => chat.lastMessage || '';
+
+  // Helper to check if chat has real message interaction
+  const hasRealMessage = (chat: Chat) => {
+    const msg = (chat.lastMessage || '').trim();
+    const hasMsg = msg !== '' && msg !== 'Aún sin mensajes' && msg !== 'No message yet';
+    const hasUnread = (chat.unreadCount || 0) > 0;
+    const hasValidTimestamp = (chat.timestamp || 0) > 0;
+    return hasMsg || hasUnread || hasValidTimestamp;
+  };
 
   // Calculate counts for section filters
   const counts = useMemo(() => {
     const list = chatsTab.chats;
+    const activeList = list.filter(hasRealMessage);
     const unread = list.filter(c => c.unreadCount > 0).length;
-    const individual = list.filter(c => c.kind === 'individual' || (!c.isGroup && c.kind !== 'group')).length;
-    const group = list.filter(c => c.isGroup || c.kind === 'group').length;
+    const individual = activeList.filter(c => c.kind === 'individual' || (!c.isGroup && c.kind !== 'group')).length;
+    const group = activeList.filter(c => c.isGroup || c.kind === 'group').length;
     const ai = list.filter(c => {
       if (!selectedSessionId) return false;
       const conf = getEffectiveAiConfig(selectedSessionId, c.id);
       return conf.enabled;
     }).length;
 
-    return { all: list.length, unread, individual, group, ai };
+    return { active: activeList.length, unread, individual, group, ai, all: list.length };
   }, [chatsTab.chats, selectedSessionId]);
 
   // Filter chats by category
   const filteredCategoryChats = useMemo(() => {
     const list = chatsTab.chats;
     switch (chatCategory) {
+      case 'active':
+        return list.filter(hasRealMessage);
       case 'unread':
         return list.filter(c => c.unreadCount > 0);
-      case 'individual':
-        return list.filter(c => c.kind === 'individual' || (!c.isGroup && c.kind !== 'group'));
-      case 'group':
-        return list.filter(c => c.isGroup || c.kind === 'group');
       case 'ai':
         return list.filter(c => {
           if (!selectedSessionId) return false;
           const conf = getEffectiveAiConfig(selectedSessionId, c.id);
           return conf.enabled;
         });
+      case 'individual':
+        return list.filter(c => (c.kind === 'individual' || (!c.isGroup && c.kind !== 'group')) && hasRealMessage(c));
+      case 'group':
+        return list.filter(c => (c.isGroup || c.kind === 'group') && hasRealMessage(c));
       case 'all':
       default:
         return list;
     }
   }, [chatsTab.chats, chatCategory, selectedSessionId]);
 
-  // Split into visual chronological / priority sections when viewing 'all'
+  // Split into visual chronological / priority sections when viewing 'active' or 'all'
   const chatSections = useMemo(() => {
-    if (chatCategory !== 'all') {
+    if (chatCategory !== 'all' && chatCategory !== 'active') {
       return [{ title: null, items: filteredCategoryChats }];
     }
 
@@ -144,7 +155,7 @@ export function ChatSidebar({
 
     if (todayList.length > 0) {
       sections.push({
-        title: `Hoy / Recientes (${todayList.length})`,
+        title: `Mensajes Recientes (${todayList.length})`,
         icon: '💬',
         badgeClass: 'badge-today',
         items: todayList,
@@ -153,7 +164,7 @@ export function ChatSidebar({
 
     if (earlierList.length > 0) {
       sections.push({
-        title: `Anteriores (${earlierList.length})`,
+        title: `Conversaciones Anteriores (${earlierList.length})`,
         icon: '📅',
         badgeClass: 'badge-earlier',
         items: earlierList,
@@ -261,10 +272,34 @@ export function ChatSidebar({
           >
             {sessions.map(s => (
               <option key={s.id} value={s.id}>
-                📱 {s.name} ({s.phone || 'Sin número asignado'})
+                🤖 {s.name} ({s.phone || 'Sin número asignado'})
               </option>
             ))}
           </select>
+
+          {sessions.length > 1 && (
+            <div className="session-quick-pills" style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+              {sessions.map(s => (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => onSelectSession(s.id)}
+                  style={{
+                    padding: '2px 8px',
+                    fontSize: '0.7rem',
+                    fontWeight: s.id === selectedSessionId ? 700 : 500,
+                    borderRadius: '4px',
+                    border: s.id === selectedSessionId ? '1px solid #3b82f6' : '1px solid var(--border)',
+                    background: s.id === selectedSessionId ? 'rgba(59, 130, 246, 0.2)' : 'var(--bg-light)',
+                    color: s.id === selectedSessionId ? '#60a5fa' : 'var(--text-secondary)',
+                    cursor: 'pointer',
+                  }}
+                >
+                  🤖 {s.name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Chats / Channels / Status segmented control */}
@@ -302,12 +337,13 @@ export function ChatSidebar({
           <div className="chat-category-pills">
             <button
               type="button"
-              className={`cat-pill ${chatCategory === 'all' ? 'active' : ''}`}
-              onClick={() => setChatCategory('all')}
+              className={`cat-pill ${chatCategory === 'active' ? 'active' : ''}`}
+              onClick={() => setChatCategory('active')}
+              title="Solo conversaciones con mensajes reales enviados o recibidos"
             >
-              <Layers size={13} />
-              <span>Todos</span>
-              <span className="cat-count">{counts.all}</span>
+              <MessageSquare size={13} />
+              <span>Con Mensajes</span>
+              <span className="cat-count">{counts.active}</span>
             </button>
 
             <button
@@ -318,6 +354,17 @@ export function ChatSidebar({
               <BellRing size={13} />
               <span>No leídos</span>
               {counts.unread > 0 && <span className="cat-count unread">{counts.unread}</span>}
+            </button>
+
+            <button
+              type="button"
+              className={`cat-pill ${chatCategory === 'ai' ? 'active' : ''}`}
+              onClick={() => setChatCategory('ai')}
+              title="Chats con Bot IA activado"
+            >
+              <Bot size={13} />
+              <span>Bot IA</span>
+              {counts.ai > 0 && <span className="cat-count">{counts.ai}</span>}
             </button>
 
             <button
@@ -342,12 +389,13 @@ export function ChatSidebar({
 
             <button
               type="button"
-              className={`cat-pill ${chatCategory === 'ai' ? 'active' : ''}`}
-              onClick={() => setChatCategory('ai')}
+              className={`cat-pill ${chatCategory === 'all' ? 'active' : ''}`}
+              onClick={() => setChatCategory('all')}
+              title="Ver todos los contactos sincronizados de WhatsApp"
             >
-              <Bot size={13} />
-              <span>Bot IA</span>
-              {counts.ai > 0 && <span className="cat-count">{counts.ai}</span>}
+              <Layers size={13} />
+              <span>Sincronizados</span>
+              <span className="cat-count">{counts.all}</span>
             </button>
           </div>
         )}
@@ -357,28 +405,6 @@ export function ChatSidebar({
           <button type="button" className="btn-primary status-compose-trigger" onClick={onComposeStatus}>
             <Plus size={16} />
             {t('chats.status.compose')}
-          </button>
-        )}
-
-        {/* Start a new chat / AI assistant conversation */}
-        {activeTab === 'chats' && onNewChat && (
-          <button
-            type="button"
-            className="btn-primary new-chat-trigger"
-            onClick={onNewChat}
-            style={{
-              width: '100%',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '0.375rem',
-              padding: '0.625rem',
-              borderRadius: '8px',
-              fontWeight: 600,
-            }}
-          >
-            <Plus size={16} />
-            {t('chats.newChat', 'Nuevo Chat / Asistente')}
           </button>
         )}
       </div>
@@ -394,7 +420,30 @@ export function ChatSidebar({
           ) : filteredCategoryChats.length === 0 ? (
             <div className="chats-list-empty">
               <MessageSquare size={32} style={{ opacity: 0.35, marginBottom: '0.5rem' }} />
-              <span>No hay conversaciones en esta sección</span>
+              <span>
+                {chatCategory === 'active'
+                  ? 'No hay conversaciones activas con mensajes aún'
+                  : 'No hay conversaciones en esta sección'}
+              </span>
+              {chatCategory === 'active' && counts.all > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setChatCategory('all')}
+                  style={{
+                    marginTop: '8px',
+                    fontSize: '0.75rem',
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    background: 'rgba(59, 130, 246, 0.15)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    cursor: 'pointer',
+                    color: '#60a5fa',
+                    fontWeight: 600,
+                  }}
+                >
+                  Ver todos los contactos sincronizados ({counts.all})
+                </button>
+              )}
             </div>
           ) : (
             chatSections.map((section, sIdx) => (

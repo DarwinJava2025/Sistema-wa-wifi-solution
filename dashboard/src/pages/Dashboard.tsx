@@ -1,4 +1,4 @@
-import { useState, useMemo, Suspense } from 'react';
+import { useState, useMemo, useRef, useEffect, Suspense } from 'react';
 import { lazyWithRetry as lazy } from '../utils/lazyWithRetry';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
@@ -7,15 +7,13 @@ import {
   Send,
   Activity,
   Loader2,
-  Bot,
-  Sparkles,
-  Zap,
-  Layers,
-  Cpu,
   Smartphone,
-  ExternalLink,
-  ChevronRight,
+  ChevronDown,
   Filter,
+  Search,
+  Check,
+  Download,
+  RefreshCw,
 } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
 import {
@@ -24,9 +22,11 @@ import {
   useWebhooksQuery,
   useStopSessionMutation,
   useStatsOverviewQuery,
+  useSessionDetailedStatsQuery,
 } from '../hooks/queries';
 import { PageHeader } from '../components/PageHeader';
 import { getSessionAiConfig, AI_ROLES, type AiRoleType } from '../services/aiAssistant';
+import { downloadDashboardSummaryExcel } from '../utils/excelService';
 import './Dashboard.css';
 
 // Lazy load analytics charts
@@ -45,9 +45,29 @@ export function Dashboard() {
 
   // Selected bot/session filter: 'all' or specific sessionId
   const [selectedBotId, setSelectedBotId] = useState<string>('all');
+  const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
+  const [botSearchQuery, setBotSearchQuery] = useState<string>('');
+  const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  const messagesToday = overview ? overview.messages.today.sent + overview.messages.today.received : '—';
-  const totalMessages = overview ? overview.messages.sent + overview.messages.received : '—';
+  // Fetch session-specific stats when a bot is selected
+  const isBotFiltered = selectedBotId !== 'all';
+  const { data: sessionDetailedStats } = useSessionDetailedStatsQuery(selectedBotId, isBotFiltered);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    if (isDropdownOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isDropdownOpen]);
+
   const loading = loadingSessions;
   const error =
     sessionsError instanceof Error ? sessionsError.message : sessionsError ? t('dashboard.loadError') : null;
@@ -64,7 +84,7 @@ export function Dashboard() {
   // Build bot information enriched with AI configurations
   const enrichedBots = useMemo(() => {
     return sessions.map(session => {
-      const aiConf = getSessionAiConfig(session.id);
+      const aiConf = getSessionAiConfig(session.id, session.name);
       const isConnected = session.status === 'ready';
       const roleDef = aiConf ? AI_ROLES[aiConf.role] : null;
 
@@ -76,15 +96,22 @@ export function Dashboard() {
         roleType: (aiConf?.role || 'support') as AiRoleType,
         businessName: aiConf?.businessName || session.name,
         autoPilot: aiConf?.autoPilot ?? false,
-        aiEnabled: aiConf?.enabled ?? false,
-        llmProvider: aiConf?.llmConfig?.provider || 'openai',
-        llmModel: aiConf?.llmConfig?.model || 'gpt-4o-mini',
-        docsCount: aiConf?.documents?.length || 0,
-        urlsCount: aiConf?.urls?.length || 0,
-        triggersCount: (aiConf?.templateTriggers || []).filter(t => t.enabled).length,
       };
     });
   }, [sessions]);
+
+  // Filter bots in dropdown search
+  const filteredDropdownBots = useMemo(() => {
+    if (!botSearchQuery.trim()) return enrichedBots;
+    const q = botSearchQuery.toLowerCase();
+    return enrichedBots.filter(
+      b =>
+        b.session.name.toLowerCase().includes(q) ||
+        b.roleName.toLowerCase().includes(q) ||
+        (b.session.phone && b.session.phone.toLowerCase().includes(q)) ||
+        b.session.id.toLowerCase().includes(q),
+    );
+  }, [enrichedBots, botSearchQuery]);
 
   // Selected bot info when a specific bot filter is active
   const selectedBotData = useMemo(() => {
@@ -92,11 +119,17 @@ export function Dashboard() {
     return enrichedBots.find(b => b.session.id === selectedBotId) || null;
   }, [enrichedBots, selectedBotId]);
 
-  // Dynamic stat cards based on selection
-  const dynamicStatsCards = useMemo(() => {
-    if (!selectedBotData) {
-      // Global overview cards
-      const activeAiBotsCount = enrichedBots.filter(b => b.aiEnabled).length;
+  // Standard metric cards (showing either global totals or filtered by selected bot)
+  const statsCards = useMemo(() => {
+    if (!isBotFiltered || !selectedBotData) {
+      // Global Overview Mode
+      const msgsToday = overview?.messages?.today
+        ? overview.messages.today.sent + overview.messages.today.received
+        : '—';
+      const totalMsgs = overview?.messages
+        ? overview.messages.sent + overview.messages.received
+        : '—';
+      const sentMsgs = overview?.messages?.sent ?? '—';
 
       return [
         {
@@ -108,57 +141,66 @@ export function Dashboard() {
         },
         {
           label: 'MENSAJES HOY',
-          value: messagesToday,
+          value: msgsToday,
           icon: Send,
-          detail: 'Mensajes enviados y recibidos en todas las líneas',
+          detail: overview?.messages?.today
+            ? `${overview.messages.today.sent} enviados · ${overview.messages.today.received} recibidos`
+            : 'Mensajes enviados y recibidos hoy',
         },
         {
-          label: 'BOTS IA ACTIVOS',
-          value: activeAiBotsCount,
-          icon: Bot,
-          detail: `${enrichedBots.filter(b => b.autoPilot).length} con Piloto Automático`,
+          label: 'MENSAJES ENVIADOS',
+          value: sentMsgs,
+          icon: Activity,
+          detail: 'Salientes hacia clientes en todas las líneas',
         },
         {
           label: 'TOTAL MENSAJES',
-          value: totalMessages,
+          value: totalMsgs,
           icon: Activity,
-          detail: `${webhookCount} Webhooks enrutando eventos`,
+          detail: overview?.messages
+            ? `${overview.messages.received} recibidos · ${overview.messages.failed} fallidos`
+            : `${webhookCount} Webhooks enrutando eventos`,
         },
       ];
     } else {
-      // Specific bot metrics
-      const { session, isConnected, roleName, autoPilot, llmModel, llmProvider, triggersCount, docsCount } = selectedBotData;
+      // Specific Bot Filtered Mode (Showing the EXACT SAME 4 metric slots for the selected bot)
+      const { session, isConnected } = selectedBotData;
+      const msgs = sessionDetailedStats?.messages;
+      const msgsToday = msgs ? msgs.today : '—';
+      const sentMsgs = msgs ? msgs.sent : '—';
+      const totalMsgs = msgs ? msgs.sent + msgs.received : '—';
 
       return [
         {
-          label: `ESTADO: ${session.name}`,
-          value: isConnected ? 'Conectado' : session.status.toUpperCase(),
+          label: 'ESTADO DE SESIÓN',
+          value: isConnected ? '1 Online' : '0 Online',
           icon: MessageSquare,
-          detail: `Teléfono: ${session.phone || 'Sin vincular'}`,
+          detail: `Bot: ${session.name} · ${session.phone || 'Sin vincular'}`,
           badge: isConnected ? 'Online' : 'Offline',
-          highlight: isConnected ? 'success' : 'warn',
         },
         {
-          label: 'ROL INTELIGENTE',
-          value: roleName,
-          icon: Bot,
-          detail: `Empresa: ${selectedBotData.businessName}`,
+          label: 'MENSAJES HOY',
+          value: msgsToday,
+          icon: Send,
+          detail: msgs ? `${msgs.today} mensajes procesados hoy por este bot` : 'Cargando mensajes de hoy...',
         },
         {
-          label: 'PILOTO AUTOMÁTICO',
-          value: autoPilot ? '⚡ Activo' : '⏸️ Pausado',
-          icon: Zap,
-          detail: `Motor: ${llmProvider.toUpperCase()} (${llmModel})`,
+          label: 'MENSAJES ENVIADOS',
+          value: sentMsgs,
+          icon: Activity,
+          detail: msgs ? `Respuestas y envíos de ${session.name}` : 'Cargando mensajes enviados...',
         },
         {
-          label: 'BASE & PLANTILLAS',
-          value: `${triggersCount} Plantillas`,
-          icon: Layers,
-          detail: `${docsCount} documentos y listas de precios`,
+          label: 'TOTAL MENSAJES',
+          value: totalMsgs,
+          icon: Activity,
+          detail: msgs
+            ? `${msgs.received} recibidos · ${msgs.failed} fallidos`
+            : 'Historial total de este bot',
         },
       ];
     }
-  }, [selectedBotData, enrichedBots, stats, messagesToday, totalMessages, webhookCount]);
+  }, [isBotFiltered, selectedBotData, stats, overview, sessionDetailedStats, webhookCount]);
 
   const formatLastActive = (date?: string | null) => {
     if (!date) return t('common.never');
@@ -171,6 +213,12 @@ export function Dashboard() {
 
   const formatStatus = (status: string) => t(`sessionStatus.${status}`, { defaultValue: status });
 
+  // Filter sessions table if a bot is selected
+  const displayedSessions = useMemo(() => {
+    if (selectedBotId === 'all') return sessions;
+    return sessions.filter(s => s.id === selectedBotId);
+  }, [sessions, selectedBotId]);
+
   if (loading) {
     return (
       <div
@@ -182,67 +230,207 @@ export function Dashboard() {
     );
   }
 
-  if (error) {
-    return (
-      <div className="dashboard" style={{ padding: '2rem' }}>
-        <div
-          style={{ background: 'rgba(239, 68, 68, 0.12)', padding: '1rem', borderRadius: '8px', color: 'var(--error)' }}
-        >
-          {t('dashboard.errorPrefix', { message: error })}
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="dashboard">
       <PageHeader
         title={t('dashboard.title')}
-        subtitle="Monitorea el rendimiento, actividad y estadísticas detalladas de cada bot de WhatsApp en tiempo real"
+        subtitle={
+          selectedBotData
+            ? `Mostrando métricas y estadísticas filtradas para el bot: ${selectedBotData.session.name}`
+            : 'Monitorea el rendimiento, actividad y estadísticas detalladas de cada bot de WhatsApp en tiempo real'
+        }
         badge={
           <span className="status-badge connected">
             {stats?.ready ? `${stats.ready} Bots Conectados` : 'Sistema Activo'}
           </span>
         }
-      />
-
-      {/* BOT / SESSION FILTER SELECTOR BAR */}
-      <div className="dashboard-bot-filter-bar">
-        <div className="bot-filter-label">
-          <Filter size={15} />
-          <span>Filtrar por Bot / Sesión:</span>
-        </div>
-
-        <div className="bot-filter-pills-row">
+        actions={
           <button
             type="button"
-            className={`bot-filter-pill ${selectedBotId === 'all' ? 'active' : ''}`}
-            onClick={() => setSelectedBotId('all')}
+            className="btn-secondary"
+            onClick={() => downloadDashboardSummaryExcel(stats, overview, sessions)}
+            title="Descargar métricas y resumen general en formato Excel"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 14px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 500,
+              fontSize: '13px',
+            }}
           >
-            <span className="filter-pill-icon">🌐</span>
-            <span className="filter-pill-name">Todos los Bots (Global)</span>
-            <span className="filter-pill-count">{enrichedBots.length}</span>
+            <Download size={16} />
+            <span>Descargar Resumen Excel</span>
           </button>
+        }
+      />
 
-          {enrichedBots.map(b => (
-            <button
-              key={b.session.id}
-              type="button"
-              className={`bot-filter-pill ${selectedBotId === b.session.id ? 'active' : ''}`}
-              onClick={() => setSelectedBotId(b.session.id)}
-            >
-              <span className={`status-dot-mini ${b.isConnected ? 'online' : 'offline'}`} />
-              <span className="filter-pill-icon">🤖</span>
-              <span className="filter-pill-name">{b.session.name}</span>
-              <span className="filter-pill-role">({b.roleName})</span>
-            </button>
-          ))}
+      {error && (
+        <div
+          style={{
+            background: 'rgba(239, 68, 68, 0.12)',
+            padding: '0.85rem 1.25rem',
+            borderRadius: '8px',
+            color: 'var(--error)',
+            marginBottom: '1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+          }}
+        >
+          <span>{t('dashboard.errorPrefix', { message: error })}</span>
+          <button
+            type="button"
+            className="btn-sm"
+            onClick={() => window.location.reload()}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+          >
+            <RefreshCw size={13} />
+            <span>Reintentar</span>
+          </button>
         </div>
+      )}
+
+      {/* BOT / SESSION FILTER DROPDOWN */}
+      <div className="dashboard-bot-filter-bar">
+        <div className="bot-filter-left">
+          <div className="bot-filter-label">
+            <Filter size={15} />
+            <span>Filtrar por Bot / Sesión:</span>
+          </div>
+
+          {/* Custom Searchable Dropdown */}
+          <div className="bot-select-dropdown-container" ref={dropdownRef}>
+            <button
+              type="button"
+              className="bot-select-trigger-btn"
+              onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+              aria-expanded={isDropdownOpen}
+            >
+              <div className="trigger-content">
+                {selectedBotData ? (
+                  <>
+                    <span className={`status-dot-mini ${selectedBotData.isConnected ? 'online' : 'offline'}`} />
+                    <span className="trigger-icon">🤖</span>
+                    <span className="trigger-bot-name">{selectedBotData.session.name}</span>
+                    <span className="trigger-role-badge">{selectedBotData.roleName}</span>
+                    {selectedBotData.session.phone && (
+                      <span className="trigger-phone">({selectedBotData.session.phone})</span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <span className="trigger-icon">🌐</span>
+                    <span className="trigger-bot-name">Todos los Bots (Resumen Global)</span>
+                    <span className="trigger-count-badge">{enrichedBots.length} creados</span>
+                  </>
+                )}
+              </div>
+              <ChevronDown size={16} className={`trigger-chevron ${isDropdownOpen ? 'open' : ''}`} />
+            </button>
+
+            {/* Dropdown Menu Popover */}
+            {isDropdownOpen && (
+              <div className="bot-select-menu-popover animate-fade-in">
+                {enrichedBots.length > 4 && (
+                  <div className="bot-search-box">
+                    <Search size={14} />
+                    <input
+                      type="text"
+                      placeholder="Buscar bot por nombre, rol o teléfono..."
+                      value={botSearchQuery}
+                      onChange={e => setBotSearchQuery(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                )}
+
+                <div className="bot-options-list">
+                  {/* Global "All" option */}
+                  <div
+                    className={`bot-option-item ${selectedBotId === 'all' ? 'selected' : ''}`}
+                    onClick={() => {
+                      setSelectedBotId('all');
+                      setIsDropdownOpen(false);
+                    }}
+                  >
+                    <div className="bot-option-left">
+                      <span className="option-icon">🌐</span>
+                      <div className="option-texts">
+                        <span className="option-title">Todos los Bots (Resumen Global)</span>
+                        <span className="option-sub">Métricas consolidadas de todas las líneas de WhatsApp</span>
+                      </div>
+                    </div>
+                    <div className="option-right">
+                      <span className="option-count">{enrichedBots.length}</span>
+                      {selectedBotId === 'all' && <Check size={16} className="option-check" />}
+                    </div>
+                  </div>
+
+                  <div className="bot-options-divider" />
+
+                  {/* Individual bot options */}
+                  {filteredDropdownBots.length === 0 ? (
+                    <div className="bot-options-empty">No se encontraron bots coincidentes.</div>
+                  ) : (
+                    filteredDropdownBots.map(b => {
+                      const isSelected = selectedBotId === b.session.id;
+                      return (
+                        <div
+                          key={b.session.id}
+                          className={`bot-option-item ${isSelected ? 'selected' : ''}`}
+                          onClick={() => {
+                            setSelectedBotId(b.session.id);
+                            setIsDropdownOpen(false);
+                          }}
+                        >
+                          <div className="bot-option-left">
+                            <span className={`status-dot-mini ${b.isConnected ? 'online' : 'offline'}`} />
+                            <span className="option-icon">🤖</span>
+                            <div className="option-texts">
+                              <div className="option-name-row">
+                                <span className="option-title">{b.session.name}</span>
+                                <span className="option-role-tag">{b.roleName}</span>
+                              </div>
+                              <span className="option-sub">
+                                {b.session.phone ? `📱 ${b.session.phone}` : '⚠️ Sin teléfono vinculado'} ·{' '}
+                                {b.isConnected ? '🟢 Conectado' : '⚪ Desconectado'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="option-right">
+                            {b.autoPilot && <span className="option-auto-pill">⚡ Auto</span>}
+                            {isSelected && <Check size={16} className="option-check" />}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {selectedBotId !== 'all' && (
+          <button
+            type="button"
+            className="btn-reset-filter"
+            onClick={() => setSelectedBotId('all')}
+            title="Volver a la vista global de todos los bots"
+          >
+            Ver Global 🌐
+          </button>
+        )}
       </div>
 
       {/* TOP STATS CARDS */}
       <div className="stats-grid">
-        {dynamicStatsCards.map(({ label, value, icon: Icon, detail }) => (
+        {statsCards.map(({ label, value, icon: Icon, detail }) => (
           <div key={label} className="stat-card">
             <Icon className="stat-watermark" />
             <div className="stat-header">
@@ -255,138 +443,9 @@ export function Dashboard() {
         ))}
       </div>
 
-      {/* DETAILED STATS BREAKDOWN PER BOT */}
-      <section className="bots-breakdown-section">
-        <div className="section-header">
-          <div className="section-title-group">
-            <Bot size={22} className="title-icon-primary" />
-            <h2>
-              {selectedBotData
-                ? `Estadísticas de: ${selectedBotData.session.name}`
-                : 'Estadísticas y Rendimiento por Bot Chat Creado'}
-            </h2>
-          </div>
-          <span className="section-subtitle">
-            {selectedBotData
-              ? 'Detalle de configuración, rol inteligente y automatizaciones asignadas a esta sesión'
-              : `${enrichedBots.length} bots registrados con roles y motores LLM independientes`}
-          </span>
-        </div>
-
-        {enrichedBots.length === 0 ? (
-          <div className="no-bots-card">
-            <Bot size={40} style={{ opacity: 0.35, marginBottom: '0.75rem' }} />
-            <h3>No hay Bots ni Sesiones creadas todavía</h3>
-            <p>Crea tu primer bot de WhatsApp para comenzar a ver estadísticas y respuestas automáticas por separado.</p>
-            <button
-              type="button"
-              className="btn-primary"
-              onClick={() => navigate('/sessions')}
-              style={{ marginTop: '1rem' }}
-            >
-              🚀 Crear mi Primer Bot IA
-            </button>
-          </div>
-        ) : (
-          <div className="bots-cards-grid">
-            {(selectedBotId === 'all'
-              ? enrichedBots
-              : enrichedBots.filter(b => b.session.id === selectedBotId)
-            ).map(b => (
-              <div key={b.session.id} className={`bot-stat-card ${b.isConnected ? 'is-connected' : ''}`}>
-                {/* Bot Card Header */}
-                <div className="bot-card-header">
-                  <div className="bot-card-title-wrap">
-                    <div className="bot-avatar-box">
-                      <Bot size={20} />
-                    </div>
-                    <div className="bot-title-texts">
-                      <div className="bot-name-row">
-                        <span className="bot-main-name">{b.session.name}</span>
-                        <span className={`bot-conn-badge ${b.isConnected ? 'online' : 'offline'}`}>
-                          {b.isConnected ? '● Conectado' : '● Desconectado'}
-                        </span>
-                      </div>
-                      <span className="bot-phone-sub">
-                        <Smartphone size={12} />
-                        {b.session.phone ? b.session.phone : 'Sin teléfono vinculado'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="bot-role-tag">
-                    <Sparkles size={13} />
-                    <span>{b.roleName}</span>
-                  </div>
-                </div>
-
-                {/* Bot Stats & Parameters Grid */}
-                <div className="bot-card-metrics-grid">
-                  <div className="bot-metric-item">
-                    <span className="metric-label">Piloto Automático</span>
-                    <span className="metric-value">
-                      {b.autoPilot ? (
-                        <span className="val-pill active">⚡ Auto-Responder</span>
-                      ) : (
-                        <span className="val-pill inactive">Pausado</span>
-                      )}
-                    </span>
-                  </div>
-
-                  <div className="bot-metric-item">
-                    <span className="metric-label">Motor LLM</span>
-                    <span className="metric-value code-font">
-                      <Cpu size={13} /> {b.llmProvider.toUpperCase()}
-                    </span>
-                  </div>
-
-                  <div className="bot-metric-item">
-                    <span className="metric-label">Plantillas Meta</span>
-                    <span className="metric-value">
-                      📋 {b.triggersCount} {b.triggersCount === 1 ? 'disparador' : 'disparadores'}
-                    </span>
-                  </div>
-
-                  <div className="bot-metric-item">
-                    <span className="metric-label">Base de Conocimiento</span>
-                    <span className="metric-value">
-                      📂 {b.docsCount} archivos · {b.urlsCount} URLs
-                    </span>
-                  </div>
-                </div>
-
-                {/* Bot Quick Actions */}
-                <div className="bot-card-footer-actions">
-                  <button
-                    type="button"
-                    className="btn-bot-action"
-                    onClick={() => navigate('/chats')}
-                    title="Ver chats atendidos por este bot"
-                  >
-                    <MessageSquare size={14} />
-                    <span>Abrir Chats</span>
-                    <ChevronRight size={14} />
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn-bot-action secondary"
-                    onClick={() => navigate('/sessions')}
-                    title="Configurar rol, prompts y precios de este bot"
-                  >
-                    <span>Gestionar Bot</span>
-                    <ExternalLink size={13} />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      {/* CHARTS COMPONENT */}
+      {/* CHARTS COMPONENT (FILTERED WHEN A BOT IS SELECTED) */}
       <Suspense fallback={null}>
-        <DashboardCharts />
+        <DashboardCharts sessionId={selectedBotId !== 'all' ? selectedBotId : undefined} />
       </Suspense>
 
       {/* SESSIONS TABLE */}
@@ -397,7 +456,9 @@ export function Dashboard() {
             <h2>{t('dashboard.sessionsOverview')}</h2>
           </div>
           <span className="section-subtitle">
-            {t('dashboard.showingSessions', { shown: sessions.length, total: stats?.total ?? 0 })}
+            {selectedBotData
+              ? `Mostrando sesión activa: ${selectedBotData.session.name}`
+              : t('dashboard.showingSessions', { shown: displayedSessions.length, total: stats?.total ?? 0 })}
           </span>
         </div>
 
@@ -409,12 +470,12 @@ export function Dashboard() {
             <span>{t('dashboard.columns.lastActive')}</span>
             <span>{t('dashboard.columns.actions')}</span>
           </div>
-          {sessions.length === 0 ? (
+          {displayedSessions.length === 0 ? (
             <div className="table-row" style={{ justifyContent: 'center', color: 'var(--text-muted)' }}>
               {t('dashboard.noSessions')}
             </div>
           ) : (
-            sessions.map(session => (
+            displayedSessions.map(session => (
               <div key={session.id} className="table-row">
                 <div className="session-info-cell">
                   <span className="session-id">{session.id.substring(0, 12)}</span>

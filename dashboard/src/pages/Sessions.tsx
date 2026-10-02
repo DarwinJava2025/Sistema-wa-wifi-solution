@@ -15,6 +15,7 @@ import {
   Skull,
   Unlink,
   Bot,
+  Download,
 } from 'lucide-react';
 import { sessionApi, type Session, type SessionConfig, type AccountRestriction } from '../services/api';
 import { queryKeys } from '../hooks/queries';
@@ -40,6 +41,7 @@ import { Modal } from '../components/Modal';
 import CreateSessionModal from '../components/sessions/CreateSessionModal';
 import SessionAiModal from '../components/sessions/SessionAiModal';
 import { getSessionAiConfig, AI_ROLES } from '../services/aiAssistant';
+import { downloadSessionsReportExcel } from '../utils/excelService';
 import './Sessions.css';
 
 /**
@@ -414,12 +416,33 @@ export function Sessions() {
         title={t('sessions.title')}
         subtitle={t('sessions.subtitle')}
         actions={
-          canWrite && (
-            <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
-              <Plus size={18} />
-              {t('sessions.newSession')}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => downloadSessionsReportExcel(sessions)}
+              title="Descargar lista y estado de sesiones en Excel"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                fontWeight: 500,
+                fontSize: '13px',
+              }}
+            >
+              <Download size={16} />
+              <span>Exportar Excel</span>
             </button>
-          )
+            {canWrite && (
+              <button className="btn-primary" onClick={() => setShowCreateModal(true)}>
+                <Plus size={18} />
+                {t('sessions.newSession')}
+              </button>
+            )}
+          </div>
         }
       />
 
@@ -795,7 +818,10 @@ export function Sessions() {
           </div>
         ) : (
           filteredSessions.map(session => {
-            const sessionAi = getSessionAiConfig(session.id);
+            const sessionAi = getSessionAiConfig(session.id, session.name);
+            const activeDeptCount = Array.isArray(sessionAi.multiRole?.departments)
+              ? sessionAi.multiRole.departments.filter(d => d && d.enabled).length
+              : 0;
             return (
               <div key={session.id} className="session-card">
                 <div className="card-header">
@@ -805,15 +831,19 @@ export function Sessions() {
                       <span
                         className="status-pill"
                         style={{
-                          background: 'rgba(139, 92, 246, 0.15)',
-                          color: '#8b5cf6',
-                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          background: sessionAi.multiRole?.enabled ? 'rgba(56, 189, 248, 0.15)' : 'rgba(139, 92, 246, 0.15)',
+                          color: sessionAi.multiRole?.enabled ? '#38bdf8' : '#8b5cf6',
+                          border: `1px solid ${sessionAi.multiRole?.enabled ? 'rgba(56, 189, 248, 0.3)' : 'rgba(139, 92, 246, 0.3)'}`,
                           fontSize: '11px',
                           fontWeight: 600,
                         }}
-                        title={`Bot IA: ${sessionAi.role === 'custom' && sessionAi.customRoleName ? sessionAi.customRoleName : AI_ROLES[sessionAi.role]?.name || 'Activo'}${sessionAi.autoPilot ? ' • Auto' : ''}`}
+                        title={`Bot IA: ${sessionAi.multiRole?.enabled ? `Multi-Rol (${activeDeptCount} áreas activas)` : sessionAi.role === 'custom' && sessionAi.customRoleName ? sessionAi.customRoleName : AI_ROLES[sessionAi.role]?.name || 'Activo'}${sessionAi.autoPilot ? ' • Auto' : ''}`}
                       >
-                        🤖 {sessionAi.role === 'custom' && sessionAi.customRoleName ? sessionAi.customRoleName : AI_ROLES[sessionAi.role]?.name || 'IA'}
+                        {sessionAi.multiRole?.enabled ? (
+                          <>🎭 Multi-Rol ({activeDeptCount})</>
+                        ) : (
+                          <>🤖 {sessionAi.role === 'custom' && sessionAi.customRoleName ? sessionAi.customRoleName : AI_ROLES[sessionAi.role]?.name || 'IA'}</>
+                        )}
                       </span>
                     )}
                     <span className={`status-pill ${session.status === 'ready' ? 'connected' : session.status}`}>
@@ -871,11 +901,11 @@ export function Sessions() {
                   <button
                     className="btn-action"
                     onClick={() => setAiSessionTarget(session)}
-                    title="Configurar Rol y Horario del Asistente IA para este bot"
-                    style={{ color: '#8b5cf6' }}
+                    title="Editar características del Bot IA (Roles, Multi-Rol, Plantillas, Precios y Prompts)"
+                    style={{ color: '#a78bfa', borderColor: 'rgba(139, 92, 246, 0.4)', background: 'rgba(139, 92, 246, 0.08)', fontWeight: 600 }}
                   >
                     <Bot size={16} />
-                    Bot IA
+                    ✏️ Editar Bot
                   </button>
                   <button className="btn-action" onClick={() => setSelectedSession(session)}>
                     <Eye size={16} />

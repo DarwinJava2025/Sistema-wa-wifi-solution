@@ -1,6 +1,10 @@
 import { useState, useRef } from 'react';
-import { Upload, FileText, Globe, Trash2, Plus, Eye, FileSpreadsheet } from 'lucide-react';
+import { FileText, Globe, Trash2, Plus, Eye, FileSpreadsheet, Download } from 'lucide-react';
 import type { KnowledgeDocument, KnowledgeUrl } from '../../services/aiAssistant';
+import {
+  downloadKnowledgeDocumentExcelTemplate,
+  parseKnowledgeFileUnified,
+} from '../../utils/excelService';
 import './KnowledgeManager.css';
 
 interface KnowledgeManagerProps {
@@ -31,27 +35,31 @@ export function KnowledgeManager({
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle file uploads (txt, csv, json, md, etc.)
-  const handleFileUpload = (files: FileList | null) => {
+  // Handle file uploads (xlsx, xls, csv, json, md, txt, etc.)
+  const handleFileUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach(file => {
-      const reader = new FileReader();
-      reader.onload = e => {
-        const content = (e.target?.result as string) || '';
-        const newDoc: KnowledgeDocument = {
+    const newDocs: KnowledgeDocument[] = [];
+    for (const file of Array.from(files)) {
+      try {
+        const parsed = await parseKnowledgeFileUnified(file);
+        newDocs.push({
           id: 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
-          name: file.name,
-          size: file.size,
-          type: file.type || 'text/plain',
+          name: parsed.name,
+          size: parsed.size,
+          type: file.type || (file.name.endsWith('.xlsx') ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/plain'),
           uploadedAt: new Date().toISOString(),
-          isPriceList,
-          content,
-        };
-        onDocumentsChange([...documents, newDoc]);
-      };
-      reader.readAsText(file);
-    });
+          isPriceList: isPriceList || parsed.isPriceList,
+          content: parsed.content,
+        });
+      } catch (err) {
+        console.error('Failed to parse knowledge file:', err);
+      }
+    }
+
+    if (newDocs.length > 0) {
+      onDocumentsChange([...documents, ...newDocs]);
+    }
   };
 
   const handleRemoveDoc = (id: string) => {
@@ -111,19 +119,29 @@ export function KnowledgeManager({
         </p>
       </div>
 
-      {/* Quick Action: Sample Price List */}
+      {/* Quick Action: Sample Price List & Excel Template */}
       <div className="quick-price-bar">
         <div className="quick-price-info">
           <FileSpreadsheet size={18} className="quick-price-icon" />
-          <span>¿Quieres cargar un tarifario de ejemplo para probar cotizaciones de inmediato?</span>
+          <span>Configura tus planes de internet, tarifas y base de conocimiento:</span>
         </div>
-        <button
-          type="button"
-          className="btn-template-pill highlight"
-          onClick={handleAddSamplePriceList}
-        >
-          <Plus size={14} /> Cargar Tarifario de Ejemplo (.CSV)
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            type="button"
+            className="btn-template-pill highlight"
+            onClick={downloadKnowledgeDocumentExcelTemplate}
+            title="Descargar plantilla editable en Excel (.xlsx) con planes, precios y condiciones"
+          >
+            <Download size={14} /> Descargar Plantilla Excel (.xlsx)
+          </button>
+          <button
+            type="button"
+            className="btn-template-pill"
+            onClick={handleAddSamplePriceList}
+          >
+            <Plus size={14} /> Cargar Tarifario Ejemplo (.CSV)
+          </button>
+        </div>
       </div>
 
       {/* File Upload Dropzone */}
@@ -145,16 +163,16 @@ export function KnowledgeManager({
           ref={fileInputRef}
           type="file"
           multiple
-          accept=".txt,.csv,.json,.md,.pdf,.doc,.docx,.xls,.xlsx"
+          accept=".xlsx,.xls,.csv,.json,.md,.txt,.pdf,.doc,.docx"
           style={{ display: 'none' }}
           onChange={e => handleFileUpload(e.target.files)}
         />
         <div className="dropzone-icon-box">
-          <Upload size={24} />
+          <FileSpreadsheet size={24} color="#10b981" />
         </div>
         <div className="dropzone-text">
           <span className="dropzone-title">Haz clic aquí o arrastra tus archivos de precios y documentos</span>
-          <span className="dropzone-subtitle">Soporta listas de precios .CSV, .TXT, .JSON, .MD, manuales y catálogos</span>
+          <span className="dropzone-subtitle">Soporta hojas de cálculo Excel (.XLSX, .XLS), .CSV, .TXT, .JSON, .MD, manuales y catálogos</span>
         </div>
       </div>
 

@@ -965,10 +965,10 @@ export const auditApi = {
 // =============================================================================
 
 export const messageApi = {
-  sendText: (sessionId: string, chatId: string, text: string) =>
+  sendText: (sessionId: string, chatId: string, text: string, options?: { linkPreview?: boolean }) =>
     request<MessageResponse>(`/sessions/${sessionId}/messages/send-text`, {
       method: 'POST',
-      body: JSON.stringify({ chatId, text }),
+      body: JSON.stringify({ chatId, text, ...(options?.linkPreview !== undefined ? { linkPreview: options.linkPreview } : { linkPreview: true }) }),
     }),
   sendTemplate: (
     sessionId: string,
@@ -1357,7 +1357,28 @@ export interface MessageStats {
   topChats: Array<{ chatId: string; chatName?: string | null; messageCount: number }>;
 }
 
+export interface SessionDetailedStats {
+  session: {
+    id: string;
+    name: string;
+    status: string;
+    phone?: string;
+  };
+  messages: {
+    sent: number;
+    received: number;
+    failed: number;
+    today: number;
+  };
+  topChats: Array<{
+    chatId: string;
+    chatName: string | null;
+    messageCount: number;
+  }>;
+}
+
 export const statsApi = {
   getOverview: () => request<OverviewStats>('/stats/overview'),
   getMessages: (period: StatsPeriod) => request<MessageStats>(`/stats/messages?period=${period}`),
+  getSessionStats: (sessionId: string) => request<SessionDetailedStats>(`/stats/sessions/${sessionId}`),
 };

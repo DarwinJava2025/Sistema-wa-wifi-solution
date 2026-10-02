@@ -256,7 +256,7 @@ export class BaileysLifecycle {
       // enabled; see WhiskeySockets/Baileys Socket/index.js + Socket/chats.js). Returning true enables it
       // while keeping the full-archive download opt-in: with syncFullHistory false WhatsApp sends the
       // RECENT window + the full contact/app-state snapshot, not the entire message history.
-      shouldSyncHistoryMessage: () => true,
+      shouldSyncHistoryMessage: () => process.env.BAILEYS_SYNC_FULL_HISTORY === 'true',
       syncFullHistory: process.env.BAILEYS_SYNC_FULL_HISTORY === 'true',
       // Baileys defaults markOnlineOnConnect to true: every (re)connect broadcasts `available`,
       // and WhatsApp suppresses the paired phone's push notifications while any linked device is
@@ -323,9 +323,11 @@ export class BaileysLifecycle {
     sock.ev.on('group.join-request', event => this.host.handleGroupJoinRequest(event));
     sock.ev.on('messaging-history.set', history => {
       this.host.upsertContacts(history.contacts);
-      this.host.upsertChats(history.chats);
       this.host.addLidMappings(history.lidPnMappings ?? []);
-      void this.host.captureHistoryMessages(history.messages ?? []);
+      if (process.env.BAILEYS_SYNC_FULL_HISTORY === 'true') {
+        this.host.upsertChats(history.chats);
+        void this.host.captureHistoryMessages(history.messages ?? []);
+      }
       this.host.logger.debug('History sync received', {
         action: 'baileys_history_set',
         sessionId: this.host.config.sessionId,

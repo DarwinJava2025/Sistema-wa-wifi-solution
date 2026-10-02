@@ -5,6 +5,7 @@ import { API_BASE_URL } from './api';
 export type ScheduledCampaignType = 'birthday' | 'offer' | 'notice' | 'custom';
 export type ScheduledRepeatFrequency = 'none' | 'daily' | 'weekly' | 'monthly' | 'yearly';
 export type CampaignStatus = 'scheduled' | 'running' | 'paused' | 'completed' | 'cancelled';
+export type CampaignMediaType = 'text' | 'image' | 'video' | 'audio' | 'document';
 
 export interface CampaignContact {
   id: string;
@@ -23,6 +24,11 @@ export interface ScheduledCampaign {
   type: ScheduledCampaignType;
   sessionId: string;
   messageTemplate: string;
+  mediaType?: CampaignMediaType;
+  mediaUrl?: string; // public URL or data URL
+  mediaBase64?: string; // raw base64 data
+  mediaFilename?: string;
+  mediaMimetype?: string;
   scheduledDate: string; // YYYY-MM-DD
   scheduledTime: string; // HH:mm
   repeat: ScheduledRepeatFrequency;
@@ -181,56 +187,109 @@ export function renderMessageTemplate(
   return text;
 }
 
-/** Send single message via OpenWA backend */
+/** Send message (Text, Image, Video, Audio, or Document) via OpenWA backend */
 export async function sendWhatsAppMessage(
   sessionId: string,
   phone: string,
   message: string,
+  media?: {
+    type: CampaignMediaType;
+    url?: string;
+    base64?: string;
+    filename?: string;
+    mimetype?: string;
+  },
 ): Promise<{ success: boolean; error?: string }> {
   const apiKey = typeof window !== 'undefined' ? sessionStorage.getItem('openwa_api_key') : '';
   const formattedChatId = phone.includes('@') ? phone : `${phone}@c.us`;
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/sessions/${encodeURIComponent(sessionId)}/messages/send-text`, {
+    // 1. Text Only
+    if (!media || media.type === 'text') {
+      const res = await fetch(`${API_BASE_URL}/api/sessions/${encodeURIComponent(sessionId)}/messages/send-text`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+        },
+        body: JSON.stringify({
+          chatId: formattedChatId,
+          text: message,
+        }),
+      });
+
+      if (res.ok) return { success: true };
+      const errJson = await res.json().catch(() => null);
+      return { success: false, error: errJson?.message || `Error ${res.status}` };
+    }
+
+    // 2. Multimedia (Image, Video, Audio, Document)
+    let endpoint = 'send-image';
+    if (media.type === 'video') endpoint = 'send-video';
+    if (media.type === 'audio') endpoint = 'send-audio';
+    if (media.type === 'document') endpoint = 'send-document';
+
+    // Extract clean base64 data without data:*/*;base64, prefix if present
+    let rawBase64 = media.base64;
+    if (rawBase64 && rawBase64.includes(';base64,')) {
+      rawBase64 = rawBase64.split(';base64,')[1];
+    }
+
+    const payload: Record<string, any> = {
+      chatId: formattedChatId,
+    };
+
+    if (rawBase64) {
+      payload.base64 = rawBase64;
+      payload.mimetype = media.mimetype;
+    } else if (media.url) {
+      payload.url = media.url;
+      if (media.mimetype) payload.mimetype = media.mimetype;
+    }
+
+    if (media.filename) {
+      payload.filename = media.filename;
+    }
+
+    if (media.type === 'audio') {
+      payload.ptt = true; // send as voice note
+    } else {
+      payload.caption = message;
+    }
+
+    const res = await fetch(`${API_BASE_URL}/api/sessions/${encodeURIComponent(sessionId)}/messages/${endpoint}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         ...(apiKey ? { 'X-API-Key': apiKey } : {}),
       },
-      body: JSON.stringify({
-        chatId: formattedChatId,
-        text: message,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (res.ok) {
-      return { success: true };
-    }
-
-    // Try fallback generic endpoint if session send-text route differs
-    const fallbackRes = await fetch(`${API_BASE_URL}/api/messages/send`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(apiKey ? { 'X-API-Key': apiKey } : {}),
-      },
-      body: JSON.stringify({
-        sessionId,
-        to: phone,
-        message,
-      }),
-    });
-
-    if (fallbackRes.ok) {
+      // If it was an audio file and also had a text message, send text as follow-up
+      if (media.type === 'audio' && message.trim().length > 0) {
+        await fetch(`${API_BASE_URL}/api/sessions/${encodeURIComponent(sessionId)}/messages/send-text`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(apiKey ? { 'X-API-Key': apiKey } : {}),
+          },
+          body: JSON.stringify({
+            chatId: formattedChatId,
+            text: message,
+          }),
+        }).catch(() => {});
+      }
       return { success: true };
     }
 
     const errorJson = await res.json().catch(() => null);
     return {
       success: false,
-      error: errorJson?.message || `Error ${res.status}: Falló el envío`,
+      error: errorJson?.message || `Error ${res.status}: Falló el envío multimedia (${media.type})`,
     };
   } catch (err: any) {
-    return { success: false, error: err.message || 'Error de conexión' };
+    return { success: false, error: err.message || 'Error de conexión con el servidor' };
   }
 }

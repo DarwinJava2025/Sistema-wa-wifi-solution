@@ -118,8 +118,8 @@ select {
   padding: 0.75rem 2.5rem 0.75rem 1rem;
   font-size: 0.9375rem;
   font-family: inherit;
-  color: var(--text-primary);
-  background-color: var(--bg-white, #fff);
+  color: var(--text-primary) !important;
+  background-color: var(--bg-card, #fff);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.75rem center;
@@ -128,6 +128,11 @@ select {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
+}
+
+select option {
+  background-color: var(--bg-card, #ffffff) !important;
+  color: var(--text-primary, #0f172a) !important;
 }
 
 select:hover {
@@ -144,6 +149,28 @@ select:disabled {
   background-color: var(--bg-light, #f8fafc);
   color: var(--text-muted, #94a3b8);
   cursor: not-allowed;
+}
+
+/* Universal text inputs & textareas for 100% theme clarity */
+input[type='text'],
+input[type='password'],
+input[type='email'],
+input[type='number'],
+input[type='tel'],
+input[type='url'],
+input[type='search'],
+input:not([type]),
+textarea {
+  color: var(--text-primary) !important;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  caret-color: var(--primary, #25d366);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted) !important;
+  opacity: 0.85;
 }
 
 /* GLOBAL MODAL STYLES */
@@ -536,7 +563,82 @@ code {
     width: 100%;
     margin: 0;
     border-radius: 16px 16px 0 0;
-    /* max-height + body scroll already come from the base .modal rule; the bottom-sheet only
-       changes width/anchoring. (Scrolling lives on .modal-body to avoid a double scrollbar.) */
   }
+}
+
+/* =========================================================================
+   GLOBAL REQUIRED & VALIDATION FIELD STYLES (EXPERIENCIA DE USUARIO)
+   ========================================================================= */
+
+/* Asterisco rojo/cobre sutil en la etiqueta */
+.required-star,
+.req-star,
+.required-mark,
+.text-danger,
+.text-error,
+label span.required,
+label .req {
+  color: #f43f5e !important;
+  font-weight: 700 !important;
+  margin-left: 3px;
+  display: inline-block;
+  font-size: 1.05em;
+  line-height: 1;
+}
+
+/* Badge 'Obligatorio' opcional */
+.badge-required {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: rgba(244, 63, 94, 0.12);
+  color: #fb7185;
+  border: 1px solid rgba(244, 63, 94, 0.35);
+  margin-left: 6px;
+}
+
+/* Estado VÁLIDO / LLENO: Verde suave al estar completado */
+.is-valid,
+input.is-valid,
+textarea.is-valid,
+select.is-valid {
+  border-color: rgba(37, 211, 102, 0.55) !important;
+  border-left: 3.5px solid #25d366 !important;
+}
+
+/* Estado INVÁLIDO / ERROR: Rojo solo cuando se intenta guardar o validar y está vacío */
+.is-invalid,
+.has-error input,
+.has-error textarea,
+.has-error select,
+input.is-invalid,
+textarea.is-invalid,
+select.is-invalid {
+  border-color: #ef4444 !important;
+  border-left: 4px solid #ef4444 !important;
+  background-color: rgba(239, 68, 68, 0.05) !important;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.25) !important;
+  animation: shakeInput 0.3s ease;
+}
+
+@keyframes shakeInput {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-3px); }
+  75% { transform: translateX(3px); }
+}
+
+.error-text-hint,
+.field-error-msg {
+  color: #f87171 !important;
+  font-size: 0.75rem;
+  font-weight: 500;
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }

@@ -193,6 +193,9 @@ export class BaileysSessionStore {
     // neutral JID so an outbound send addressed in either dialect (phone or @lid) finds it.
     this.recordEphemeralFromMessage(chatId, msg);
     const timestamp = this.toUnixSeconds(msg.messageTimestamp);
+    if (!this.chats.has(chatId)) {
+      this.chats.set(chatId, { id: chatId, conversationTimestamp: timestamp });
+    }
     const existing = this.lastMessages.get(chatId);
     if (existing && existing.timestamp >= timestamp) {
       return; // keep the newest

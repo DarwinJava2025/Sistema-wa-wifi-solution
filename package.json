@@ -21,6 +21,7 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "prod": "npm run build:all && node dist/main",
+    "deploy:server": "python deploy_to_server.py",
     "dev": "concurrently -n api,dashboard -c blue,green \"npm run start:dev\" \"npm run dashboard:dev\"",
     "dashboard:install": "cd dashboard && npm install",
     "dashboard:ci": "cd dashboard && npm ci",
@@ -105,7 +106,7 @@
     "socks-proxy-agent": "^10.1.0",
     "tar-stream": "^3.2.0",
     "typeorm": "^1.1.0",
-    "undici": "^8.10.0",
+    "undici": "^6.21.1",
     "whatsapp-web.js": "1.34.7",
     "zod": "^4.4.3"
   },

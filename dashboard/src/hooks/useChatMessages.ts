@@ -1,7 +1,5 @@
 import { useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
 import {
-  mergeChatMessages,
-  mapEngineHistoryMessage,
   mergeOrAppend,
   updateMessageById,
   removeMessageById,
@@ -17,27 +15,21 @@ export function messagesQueryKey(sessionId: string, chatId: string): MessagesQue
 
 /**
  * Fetch messages for one (sessionId, chatId) and keep them cached (staleTime: Infinity); realtime
- * updates flow through useChatMessagesActions, not refetches. Engine history is fetched WITHOUT media
- * to keep the cache small — a single 50 MiB message would otherwise sit in heap as base64 (held twice
- * as a `data:` URI). Recent media still renders from the DB copy (which wins in mergeChatMessages);
- * older history media shows the omitted placeholder. Live/DB payloads that do arrive are additionally
- * bounded per slice: mergeChatMessages/mergeOrAppend run the result through capMediaPayloads, which
- * strips the oldest base64 beyond MEDIA_PAYLOAD_CACHE_LIMIT so a long media-heavy session can't grow
- * the tab's heap without bound. Cache eviction happens 5 min after the chat stops being observed
- * (gcTime), so browsing several media-rich chats doesn't accumulate large slices.
+ * updates flow through useChatMessagesActions, not refetches.
  */
 export function useChatMessages(sessionId: string, chatId: string | null): UseQueryResult<ChatMessageView[], Error> {
   return useQuery<ChatMessageView[], Error>({
     queryKey: messagesQueryKey(sessionId, chatId ?? ''),
     queryFn: async () => {
-      const [dbRes, historyRes] = await Promise.allSettled([
-        sessionApi.getChatMessages(sessionId, chatId!, 100),
-        sessionApi.getChatHistory(sessionId, chatId!, 100, false),
-      ]);
-      if (dbRes.status === 'rejected' && historyRes.status === 'rejected') throw dbRes.reason;
-      const dbMessages = dbRes.status === 'fulfilled' ? dbRes.value.messages : [];
-      const history = historyRes.status === 'fulfilled' ? historyRes.value.map(mapEngineHistoryMessage) : [];
-      return mergeChatMessages(dbMessages, history);
+      const dbRes = await sessionApi.getChatMessages(sessionId, chatId!, 100);
+      const dbMessages = dbRes?.messages || [];
+      return dbMessages.map(m => ({
+        ...m,
+        id: m.id || m.waMessageId || '',
+        waMessageId: m.waMessageId || m.id,
+        direction: m.direction || 'incoming',
+        status: m.status || 'sent',
+      }));
     },
     enabled: Boolean(sessionId && chatId),
     staleTime: Infinity,

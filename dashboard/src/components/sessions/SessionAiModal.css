@@ -1,19 +1,20 @@
 /* ==========================================================================
-   Session AI Modal - Clean Unified Theme Styling
+   Session AI Modal - Step-by-Step Wizard & Unified Styling
    ========================================================================== */
 
 .session-ai-modal-unified,
 .modal.session-ai-modal-unified {
   width: 96vw !important;
-  max-width: 1360px !important;
-  height: 88vh !important;
-  max-height: 88vh !important;
+  max-width: 1380px !important;
+  height: 92vh !important;
+  max-height: 92vh !important;
   display: flex;
   flex-direction: column;
-  background: var(--bg-white, #ffffff);
-  border: 1px solid var(--border, #e2e8f0);
+  background: #0b1120 !important;
+  color: #f1f5f9;
+  border: 1px solid #1e293b !important;
   border-radius: 16px;
-  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7);
   overflow: hidden;
   animation: modalFadeScale 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -35,13 +36,568 @@
   z-index: 99999 !important;
 }
 
-.modal-switches-bar {
-  margin: 1rem 1.5rem 0.5rem 1.5rem;
+/* Modal Header */
+.session-ai-header {
+  padding: 1rem 1.5rem;
+  background: #0f172a;
+  border-bottom: 1px solid #1e293b;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.modal-title-with-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.modal-header-icon-box {
+  width: 42px;
+  height: 42px;
+  border-radius: 10px;
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.header-title-flex {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.header-title-flex h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0;
+}
+
+.bot-session-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  background: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  padding: 2px 8px;
+  border-radius: 12px;
+}
+
+.modal-subtitle {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  margin: 0.2rem 0 0 0;
+}
+
+.header-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Global Operational Switches Bar */
+.wizard-global-toggles-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  padding: 0.85rem 1.5rem;
+  background: #0d1527;
+  border-bottom: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+
+.toggle-box-card {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.65rem 1rem;
+  background: #131d31;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+  transition: all 0.2s ease;
+}
+
+.toggle-box-card.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Custom iOS-style Switch */
+.custom-switch-label {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.custom-switch-input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.custom-switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #334155;
+  transition: 0.25s;
+  border-radius: 24px;
+}
+
+.custom-switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.25s;
+  border-radius: 50%;
+}
+
+.custom-switch-input:checked + .custom-switch-slider {
+  background-color: #16a34a;
+}
+
+.custom-switch-input:checked + .custom-switch-slider:before {
+  transform: translateX(20px);
+}
+
+.toggle-card-texts {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toggle-card-title {
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.toggle-card-sub {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+/* Wizard Step Navigation Bar (Stepper) */
+.wizard-stepper-nav {
+  display: flex;
+  background: #090d16;
+  border-bottom: 1px solid #1e293b;
+  padding: 0.4rem 1rem;
+  gap: 0.5rem;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.wizard-step-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.85rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex: 1 1 0;
+  min-width: 170px;
+  text-align: left;
+}
+
+.wizard-step-btn:hover {
+  background: #131d31;
+  color: #f8fafc;
+  border-color: #334155;
+}
+
+.wizard-step-btn.active {
+  background: #1e293b;
+  border-color: #3b82f6;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.wizard-step-btn.completed {
+  color: #cbd5e1;
+}
+
+.step-btn-number-badge {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #1e293b;
+  color: #94a3b8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 800;
+  flex-shrink: 0;
+  border: 1px solid #334155;
+}
+
+.wizard-step-btn.active .step-btn-number-badge {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #3b82f6;
+}
+
+.wizard-step-btn.completed .step-btn-number-badge {
+  background: #16a34a;
+  color: #ffffff;
+  border-color: #22c55e;
+}
+
+.step-btn-content {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.step-btn-title-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.step-btn-icon {
+  flex-shrink: 0;
+}
+
+.step-btn-title {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.step-btn-desc {
+  font-size: 0.6875rem;
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wizard-step-btn.active .step-btn-desc {
+  color: #94a3b8;
+}
+
+/* Modal Body */
+.session-ai-modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  background: #090d16;
+}
+
+/* Step Content Stack */
+.wizard-step-content-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  max-width: 100%;
+}
+
+/* Step Explanation Banner */
+.wizard-step-explanation-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding: 1rem 1.25rem;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-left: 4px solid #3b82f6;
   border-radius: 10px;
 }
 
-.session-ai-modal-body {
-  padding: 1.25rem 1.5rem 1.5rem 1.5rem;
-  overflow-y: auto;
-  flex: 1 1 auto;
+.banner-icon-box {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: rgba(59, 130, 246, 0.15);
+  color: #3b82f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.banner-icon-box.purple {
+  background: rgba(139, 92, 246, 0.15);
+  color: #8b5cf6;
+}
+
+.banner-icon-box.amber {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.banner-icon-box.blue {
+  background: rgba(6, 182, 212, 0.15);
+  color: #06b6d4;
+}
+
+.banner-icon-box.teal {
+  background: rgba(20, 184, 166, 0.15);
+  color: #14b8a6;
+}
+
+.banner-icon-box.green {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+}
+
+.banner-texts h4 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #f8fafc;
+  margin: 0 0 0.25rem 0;
+}
+
+.banner-texts p {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* Quick 1-click Templates Box */
+.quick-templates-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem;
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 10px;
+}
+
+.quick-templates-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.quick-templates-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.btn-template-pill {
+  padding: 0.4rem 0.85rem;
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 20px;
+  color: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-template-pill:hover {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* Unified Form Groups */
+.form-group-unified {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.form-group-unified label {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: #cbd5e1;
+}
+
+.form-group-unified input,
+.form-group-unified textarea,
+.form-group-unified select {
+  width: 100%;
+  background: #0f172a !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem !important;
+  color: #f8fafc !important;
+  font-size: 0.875rem !important;
+  line-height: 1.45 !important;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.form-group-unified input:focus,
+.form-group-unified textarea:focus,
+.form-group-unified select:focus {
+  outline: none;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
+}
+
+/* Time Grid & Days */
+.time-grid-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.days-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.day-pill-btn {
+  width: 42px;
+  height: 36px;
+  border-radius: 8px;
+  background: #1e293b;
+  border: 1px solid #334155;
+  color: #94a3b8;
+  font-size: 0.775rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.day-pill-btn:hover {
+  background: #334155;
+  color: #ffffff;
+}
+
+.day-pill-btn.active {
+  background: #2563eb;
+  border-color: #3b82f6;
+  color: #ffffff;
+}
+
+/* Config Card Box */
+.config-card-box {
+  background: #0f172a;
+  border: 1px solid #1e293b;
+  border-radius: 12px;
+  padding: 1.25rem;
+}
+
+/* Test Simulator in Modal */
+.test-input-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.test-input-row input {
+  flex: 1;
+  background: #131d31 !important;
+  border: 1px solid #334155 !important;
+  border-radius: 8px;
+  padding: 0.65rem 0.85rem !important;
+  color: #f8fafc !important;
+}
+
+.test-output-card {
+  background: #131d31;
+  border: 1px solid #1e293b;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+}
+
+.test-output-badge {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+/* Modal Stepper Footer */
+.session-ai-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: #0f172a;
+  border-top: 1px solid #1e293b;
+  flex-shrink: 0;
+}
+
+.footer-left-nav {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.footer-step-indicator {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+}
+
+.footer-step-indicator strong {
+  color: #38bdf8;
+}
+
+.footer-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.btn-wizard-next {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0.6rem 1.25rem;
+  background: #2563eb;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-wizard-next:hover {
+  background: #1d4ed8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 900px) {
+  .wizard-global-toggles-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .wizard-stepper-nav {
+    justify-content: flex-start;
+  }
+
+  .session-ai-footer {
+    flex-direction: column;
+    gap: 0.85rem;
+    align-items: stretch;
+  }
+
+  .footer-left-nav,
+  .footer-right-actions {
+    justify-content: space-between;
+  }
 }

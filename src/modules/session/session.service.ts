@@ -15,6 +15,7 @@ import { Repository, In, Not, IsNull, DataSource, FindManyOptions } from 'typeor
 import { QueryDeepPartialEntity } from 'typeorm/query-builder/QueryPartialEntity';
 import { setTimeout } from 'node:timers/promises';
 import { EngineTransportError } from '../../common/errors/engine-transport.error';
+import { EngineNotReadyError } from '../../common/errors/engine-not-ready.error';
 import { Session, SessionStatus } from './entities/session.entity';
 import { CreateSessionDto, SessionConfigResponseDto, UpdateSessionConfigDto } from './dto';
 import { EngineRegistry } from '../../engine/engine-registry.service';
@@ -621,13 +622,23 @@ export class SessionService implements OnModuleDestroy, OnModuleInit, OnApplicat
   }
 
   async getChats(id: string, opts: ListOptions = {}): Promise<ChatSummary[]> {
-    await this.findOne(id); // Verify session exists
-    const engine = this.requireEngine(id);
+    const session = await this.findOne(id); // Verify session exists
+    const engine = this.engines.get(id);
+    if (!engine || session.status !== SessionStatus.READY) {
+      return [];
+    }
 
-    // Most-recent first, then bound the response window. Sorting before the cap means a capped
-    // response is the N newest chats (what clients show first) rather than an arbitrary slice.
-    const chats = [...(await engine.getChats())].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-    return paginate(chats, opts.limit, opts.offset);
+    try {
+      // Most-recent first, then bound the response window. Sorting before the cap means a capped
+      // response is the N newest chats (what clients show first) rather than an arbitrary slice.
+      const chats = [...(await engine.getChats())].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      return paginate(chats, opts.limit, opts.offset);
+    } catch (err) {
+      if (err instanceof EngineNotReadyError) {
+        return [];
+      }
+      throw err;
+    }
   }
 
   /**

@@ -65,7 +65,8 @@
     "plugins": "Plugins",
     "logs": "Logs",
     "scheduledMessages": "Scheduled Messages",
-    "groupBroadcasts": "Group Broadcasts"
+    "groupBroadcasts": "Group Broadcasts",
+    "apiEndpoints": "API Endpoints"
   },
   "chats": {
     "media": {

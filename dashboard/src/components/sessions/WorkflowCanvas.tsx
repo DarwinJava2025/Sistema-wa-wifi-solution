@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   GitFork,
   Bot,
-  FileText,
   MessageSquare,
   Play,
   CheckCircle2,
@@ -13,11 +12,13 @@ import {
   Plus,
   Trash2,
   Send,
-  Zap,
   ZoomIn,
   ZoomOut,
   RotateCcw,
   Sliders,
+  Layers,
+  Hash,
+  Share2,
 } from 'lucide-react';
 import {
   type ChatAiConfig,
@@ -28,7 +29,6 @@ import {
   findMatchingTemplateTrigger,
   getDefaultTemplateTriggers,
 } from '../../services/aiAssistant';
-import { useTemplatesQuery } from '../../hooks/queries';
 import { TemplateAffiliationManager } from './TemplateAffiliationManager';
 import './WorkflowCanvas.css';
 
@@ -52,23 +52,24 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
   const [routingMode, setRoutingMode] = useState<RoutingMode>('hybrid');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('node-router');
   const [inspectorTab, setInspectorTab] = useState<'simulator' | 'triggers' | 'knowledge' | 'node'>('simulator');
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [zoomLevel, setZoomLevel] = useState<number>(0.95);
   const [testMessage, setTestMessage] = useState<string>('Hola, ¿qué precio tienen los planes de internet de 100 megas?');
   const [isExecuting, setIsExecuting] = useState(false);
   const [executionSteps, setExecutionSteps] = useState<FlowExecutionStep[]>([]);
   const [finalOutput, setFinalOutput] = useState<string | null>(null);
+  const [activeSimulatedBranch, setActiveSimulatedBranch] = useState<string | null>(null);
   const [newDocName, setNewDocName] = useState('');
   const [newDocContent, setNewDocContent] = useState('');
   const [newUrlLink, setNewUrlLink] = useState('');
   const [newUrlTitle, setNewUrlTitle] = useState('');
 
-  // Fetch templates for this session
-  const { data: templates = [] } = useTemplatesQuery(sessionId, !!sessionId);
-
   const roleDef = AI_ROLES[config.role] || AI_ROLES.support;
   const roleName = config.role === 'custom' && config.customRoleName?.trim() ? config.customRoleName.trim() : roleDef.name;
   const docs = config.documents || [];
   const urls = config.urls || [];
+  const activeTriggers = config.templateTriggers && config.templateTriggers.length > 0
+    ? config.templateTriggers
+    : getDefaultTemplateTriggers(config.role);
 
   // Handle adding documents directly from the flow canvas
   const handleAddQuickDocument = () => {
@@ -127,6 +128,8 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
     setSelectedNodeId(nodeId);
     if (nodeId === 'node-knowledge') {
       setInspectorTab('knowledge');
+    } else if (nodeId.startsWith('node-branch-') || nodeId === 'node-templates') {
+      setInspectorTab('triggers');
     } else {
       setInspectorTab('node');
     }
@@ -139,82 +142,73 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
     setFinalOutput(null);
     setInspectorTab('simulator');
 
+    const matchedTrigger = findMatchingTemplateTrigger(testMessage, activeTriggers, undefined, config);
+    const branchKey = (matchedTrigger && matchedTrigger.trigger.roleAffiliation && matchedTrigger.trigger.roleAffiliation !== 'all')
+      ? matchedTrigger.trigger.roleAffiliation
+      : config.role || 'support';
+    setActiveSimulatedBranch(`branch-${branchKey}`);
+
     const steps: FlowExecutionStep[] = [
       {
         nodeId: 'node-trigger',
-        nodeName: '1. WhatsApp Incoming Message',
+        nodeName: '1. Evento WhatsApp (Mensaje / Botón)',
         status: 'pending',
-        summary: `Mensaje recibido: "${testMessage}"`,
+        summary: `Entrada capturada: "${testMessage}"`,
       },
       {
         nodeId: 'node-router',
-        nodeName: '2. Clasificador & Enrutador',
+        nodeName: '2. Enrutador & Clasificador de Rol',
         status: 'pending',
-        summary: 'Analizando intención y coincidencia de palabras clave...',
+        summary: 'Analizando intención y departamento destino...',
       },
       {
-        nodeId: 'node-knowledge',
-        nodeName: '3. Extracción RAG & Documentos',
+        nodeId: `node-branch-${branchKey}`,
+        nodeName: `3. Rama Departamento: ${branchKey.toUpperCase()}`,
         status: 'pending',
-        summary: `Consultando ${docs.length} documentos y ${urls.length} URLs...`,
+        summary: matchedTrigger
+          ? `Mapeado a Plantilla #${matchedTrigger.trigger.templateNumber || '100'} ("${matchedTrigger.trigger.name}")`
+          : `Consulta libre enrutada al Rol ${AI_ROLES[branchKey as keyof typeof AI_ROLES]?.name || branchKey}`,
       },
       {
-        nodeId: 'node-ai',
-        nodeName: `4. Invocación LLM (${config.llmConfig?.provider?.toUpperCase() || 'CHATGPT'})`,
+        nodeId: 'node-decision-mode',
+        nodeName: `4. Decisión: ${matchedTrigger?.trigger.action === 'send_template' ? 'Solo Plantilla Meta' : matchedTrigger?.trigger.action === 'pure_ai' ? 'Solo IA LLM' : 'Híbrido IA + Plantilla'}`,
         status: 'pending',
-        summary: `Generando respuesta con rol ${roleName}...`,
+        summary: 'Resolviendo variables y consultando Base de Conocimiento RAG...',
       },
       {
         nodeId: 'node-output',
-        nodeName: '5. Gateway de Salida WhatsApp',
+        nodeName: '5. Gateway de Salida con Botones Interactivos',
         status: 'pending',
-        summary: 'Envío de respuesta al cliente.',
+        summary: 'Formateo y despacho de mensaje y botones WhatsApp.',
       },
     ];
 
     setExecutionSteps([...steps]);
 
     // Step 1: Trigger
-    await new Promise(r => setTimeout(r, 350));
+    await new Promise(r => setTimeout(r, 300));
     steps[0].status = 'completed';
     setExecutionSteps([...steps]);
 
     // Step 2: Router Decision
-    await new Promise(r => setTimeout(r, 450));
+    await new Promise(r => setTimeout(r, 400));
     steps[1].status = 'active';
     setExecutionSteps([...steps]);
 
-    const triggers = config.templateTriggers && config.templateTriggers.length > 0
-      ? config.templateTriggers
-      : getDefaultTemplateTriggers(config.role);
-
-    const matchedTrigger = findMatchingTemplateTrigger(testMessage, triggers, undefined, config);
-
     if (matchedTrigger) {
-      steps[1].summary = `🎯 Coincidencia con Trigger: "${matchedTrigger.trigger.name}" -> Plantilla: "${matchedTrigger.trigger.templateName}"`;
+      steps[1].summary = `🎯 Coincidencia por palabra clave: Rol [${matchedTrigger.trigger.roleAffiliation || 'General'}] → Plantilla #${matchedTrigger.trigger.templateNumber || '101'}`;
     } else {
-      steps[1].summary = `Pregunta consultiva general detectada. Enrutando hacia Motor IA con RAG.`;
+      steps[1].summary = `Pregunta general consultiva → Asignada a Rol por defecto [${roleName}] con soporte RAG.`;
     }
     steps[1].status = 'completed';
     setExecutionSteps([...steps]);
 
-    // Step 3: Knowledge Base
-    await new Promise(r => setTimeout(r, 400));
-    steps[2].status = 'active';
-    setExecutionSteps([...steps]);
-
-    if (matchedTrigger && matchedTrigger.trigger.action === 'send_template') {
-      steps[2].summary = `⚡ Despacho Oficial Directo: Omitiendo consulta a fuentes RAG para entrega instantánea.`;
-    } else {
-      const relevantDocs = docs.filter(d =>
-        d.isPriceList || /precio|tarifa|plan|soporte/i.test(d.name + ' ' + d.content),
-      );
-      steps[2].summary = `Recuperados ${relevantDocs.length} documentos relevantes y contexto de "${config.businessName}".`;
-    }
+    // Step 3: Department Branch Execution
+    await new Promise(r => setTimeout(r, 350));
     steps[2].status = 'completed';
     setExecutionSteps([...steps]);
 
-    // Step 4: AI Response Generation
+    // Step 4: Decision & Generation
     await new Promise(r => setTimeout(r, 500));
     steps[3].status = 'active';
     setExecutionSteps([...steps]);
@@ -232,9 +226,11 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
     }
 
     if (matchedTrigger && matchedTrigger.trigger.action === 'send_template') {
-      steps[3].summary = `📦 Plantilla oficial renderizada con cabecera ${matchedTrigger.trigger.headerType.toUpperCase()} y variables dinámicas resueltas.`;
+      steps[3].summary = `⚡ Despacho Exacto Meta: Plantilla #${matchedTrigger.trigger.templateNumber || '101'} renderizada sin alteraciones.`;
+    } else if (matchedTrigger && matchedTrigger.trigger.action === 'ai_hybrid') {
+      steps[3].summary = `⚡ Híbrido IA: Plantilla #${matchedTrigger.trigger.templateNumber || '101'} enriquecida con información de documentos.`;
     } else {
-      steps[3].summary = `Respuesta IA generada (${responseText.length} caracteres) respetando rol ${roleName}.`;
+      steps[3].summary = `🧠 100% IA LLM: Respuesta generada (${responseText.length} caracteres) con rol ${roleName}.`;
     }
     steps[3].status = 'completed';
     setExecutionSteps([...steps]);
@@ -242,7 +238,7 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
     // Step 5: Output
     await new Promise(r => setTimeout(r, 300));
     steps[4].status = 'completed';
-    steps[4].summary = `🚀 Despachado al cliente vía WhatsApp Gateway con ${matchedTrigger?.trigger.buttons?.length || 0} botones interactivos.`;
+    steps[4].summary = `🚀 Despachado al cliente vía WhatsApp Gateway con ${matchedTrigger?.trigger.buttons?.length || 3} botones interactivos.`;
     setExecutionSteps([...steps]);
 
     setFinalOutput(responseText);
@@ -255,7 +251,7 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
       <div className="workflow-studio-header">
         <div className="header-left">
           <div className="header-icon-box">
-            <Zap size={20} />
+            <Share2 size={20} />
           </div>
           <div>
             <div className="header-title-row">
@@ -263,14 +259,14 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
               <span className="live-badge">🟢 En Vivo</span>
             </div>
             <p className="header-subtitle">
-              Configura el flujo automatizado: bifurcación entre Plantillas Oficiales de Meta e IA Multimodal con Base de Conocimiento.
+              Orquesta el flujo visual: Enrutamiento por Departamento, Plantillas Numeradas (#101, #102...) y Decisión Plantilla Meta vs IA.
             </p>
           </div>
         </div>
 
-        {/* Strategy Pills */}
+        {/* Strategy Selector */}
         <div className="header-strategy-selector">
-          <span className="strategy-label">Estrategia:</span>
+          <span className="strategy-label">Estrategia Global:</span>
           <div className="strategy-buttons">
             <button
               type="button"
@@ -318,7 +314,7 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
             <button
               type="button"
               className="canvas-tool-btn"
-              onClick={() => setZoomLevel(prev => Math.max(prev - 0.1, 0.75))}
+              onClick={() => setZoomLevel(prev => Math.max(prev - 0.1, 0.6))}
               title="Alejar (Zoom Out)"
             >
               <ZoomOut size={16} />
@@ -326,7 +322,7 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
             <button
               type="button"
               className="canvas-tool-btn"
-              onClick={() => setZoomLevel(1)}
+              onClick={() => setZoomLevel(0.95)}
               title="Restablecer Vista"
             >
               <RotateCcw size={15} />
@@ -339,85 +335,124 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
               disabled={isExecuting}
             >
               <Play size={14} />
-              {isExecuting ? 'Ejecutando...' : 'Probar Flujo'}
+              {isExecuting ? 'Ejecutando Flujo...' : 'Probar Flujo'}
             </button>
           </div>
 
           {/* Canvas Interactive Grid Container */}
           <div
-            className="canvas-interactive-area"
+            className="canvas-interactive-area n8n-canvas-wide"
             style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top center' }}
           >
             {/* SVG Connecting Cables */}
             <svg className="flow-svg-connections" width="100%" height="100%">
               <defs>
-                <linearGradient id="cableGradGreen" x1="0%" y1="0%" x2="0%" y2="100%">
+                <linearGradient id="cableTrigger" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stopColor="#22c55e" />
                   <stop offset="100%" stopColor="#3b82f6" />
                 </linearGradient>
-                <linearGradient id="cableGradBlueLeft" x1="0%" y1="0%" x2="0%" y2="100%">
+                <linearGradient id="cableBranchVentas" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#3b82f6" />
+                  <stop offset="100%" stopColor="#10b981" />
+                </linearGradient>
+                <linearGradient id="cableBranchCobranzas" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stopColor="#3b82f6" />
                   <stop offset="100%" stopColor="#f59e0b" />
                 </linearGradient>
-                <linearGradient id="cableGradBlueRight" x1="0%" y1="0%" x2="0%" y2="100%">
+                <linearGradient id="cableBranchSoporte" x1="0%" y1="0%" x2="0%" y2="100%">
                   <stop offset="0%" stopColor="#3b82f6" />
-                  <stop offset="100%" stopColor="#a855f7" />
+                  <stop offset="100%" stopColor="#ef4444" />
+                </linearGradient>
+                <linearGradient id="cableBranchAtencion" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="#3b82f6" />
+                  <stop offset="100%" stopColor="#8b5cf6" />
                 </linearGradient>
               </defs>
 
-              {/* Wire 1: Trigger to Router */}
+              {/* Wire 1: Trigger -> Router */}
               <path
-                d="M 400 112 L 400 158"
+                d="M 450 90 L 450 140"
                 className={`svg-wire ${isExecuting ? 'active-pulse' : ''}`}
-                stroke="url(#cableGradGreen)"
+                stroke="url(#cableTrigger)"
               />
 
-              {/* Wire 2: Router to Template Node (Left Branch) */}
+              {/* Wire 2A: Router -> Ventas (#103) */}
               <path
-                d="M 340 258 C 340 288, 200 288, 200 320"
-                className={`svg-wire ${isExecuting && routingMode === 'template_first' ? 'active-pulse' : ''}`}
-                stroke="url(#cableGradBlueLeft)"
+                d="M 360 220 C 360 260, 120 260, 120 295"
+                className={`svg-wire ${activeSimulatedBranch === 'branch-sales' ? 'active-pulse highlight-branch' : ''}`}
+                stroke="url(#cableBranchVentas)"
               />
 
-              {/* Wire 3: Router to AI Node (Right Branch) */}
-              <path
-                d="M 460 258 C 460 288, 610 288, 610 320"
-                className={`svg-wire ${isExecuting && routingMode !== 'template_first' ? 'active-pulse' : ''}`}
-                stroke="url(#cableGradBlueRight)"
+              {/* Wire 2B: Router -> Cobranzas (#102) */}
+                <path
+                d="M 420 220 C 420 260, 340 260, 340 295"
+                className={`svg-wire ${activeSimulatedBranch === 'branch-billing' ? 'active-pulse highlight-branch' : ''}`}
+                stroke="url(#cableBranchCobranzas)"
               />
 
-              {/* Wire 4: Template Node to Output */}
+              {/* Wire 2C: Router -> Soporte (#104) */}
               <path
-                d="M 200 440 C 200 490, 340 505, 360 535"
+                d="M 480 220 C 480 260, 560 260, 560 295"
+                className={`svg-wire ${activeSimulatedBranch === 'branch-support' ? 'active-pulse highlight-branch' : ''}`}
+                stroke="url(#cableBranchSoporte)"
+              />
+
+              {/* Wire 2D: Router -> Atención (#101) */}
+              <path
+                d="M 540 220 C 540 260, 780 260, 780 295"
+                className={`svg-wire ${activeSimulatedBranch === 'branch-custom' ? 'active-pulse highlight-branch' : ''}`}
+                stroke="url(#cableBranchAtencion)"
+              />
+
+              {/* Wires from Branches -> Decision Node */}
+              <path
+                d="M 120 405 C 120 450, 380 450, 420 480"
+                className="svg-wire"
+                stroke="#10b981"
+                strokeDasharray="4 4"
+              />
+              <path
+                d="M 340 405 C 340 445, 430 450, 440 480"
                 className="svg-wire"
                 stroke="#f59e0b"
                 strokeDasharray="4 4"
               />
-
-              {/* Wire 5: AI Node to Output */}
               <path
-                d="M 610 500 C 610 520, 440 515, 440 535"
+                d="M 560 405 C 560 445, 470 450, 460 480"
                 className="svg-wire"
-                stroke="#a855f7"
+                stroke="#ef4444"
                 strokeDasharray="4 4"
+              />
+              <path
+                d="M 780 405 C 780 450, 520 450, 480 480"
+                className="svg-wire"
+                stroke="#8b5cf6"
+                strokeDasharray="4 4"
+              />
+
+              {/* Wire: Decision Node -> Output */}
+              <path
+                d="M 450 580 L 450 625"
+                className={`svg-wire ${isExecuting ? 'active-pulse' : ''}`}
+                stroke="#14b8a6"
               />
             </svg>
 
             {/* NODE 1: WhatsApp Trigger */}
             <div
               className={`studio-node trigger-node ${selectedNodeId === 'node-trigger' ? 'is-selected' : ''}`}
-              style={{ left: '260px', top: '15px', width: '280px' }}
+              style={{ left: '310px', top: '10px', width: '280px' }}
               onClick={() => handleSelectNode('node-trigger')}
             >
               <div className="node-port port-top" />
-              <div className="node-badge-tag green">⚡ EVENTO DISPARADOR</div>
+              <div className="node-badge-tag green">⚡ 1. EVENTO DISPARADOR</div>
               <div className="node-main-header">
                 <div className="node-icon-wrapper green">
                   <MessageSquare size={18} />
                 </div>
                 <div className="node-header-text">
-                  <h5>Mensaje Entrante</h5>
-                  <span className="node-tech-label">WhatsApp Cloud Webhook</span>
+                  <h5>WhatsApp Inbound</h5>
+                  <span className="node-tech-label">Texto / Botón Interactivo</span>
                 </div>
               </div>
               <div className="node-content-summary">
@@ -431,133 +466,198 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
               <div className="node-port port-bottom" />
             </div>
 
-            {/* NODE 2: Decision Logic & Router */}
+            {/* NODE 2: Multi-Role Router */}
             <div
               className={`studio-node router-node ${selectedNodeId === 'node-router' ? 'is-selected' : ''}`}
-              style={{ left: '250px', top: '160px', width: '300px' }}
+              style={{ left: '290px', top: '140px', width: '320px' }}
               onClick={() => handleSelectNode('node-router')}
             >
               <div className="node-port port-top" />
-              <div className="node-badge-tag blue">🔀 ENRUTADOR INTELIGENTE</div>
+              <div className="node-badge-tag blue">🔀 2. CLASIFICADOR MULTI-ROL</div>
               <div className="node-main-header">
                 <div className="node-icon-wrapper blue">
                   <GitFork size={18} />
                 </div>
                 <div className="node-header-text">
-                  <h5>Clasificador de Intención</h5>
-                  <span className="node-tech-label">¿Plantilla Oficial o IA LLM?</span>
+                  <h5>Enrutador de Departamento</h5>
+                  <span className="node-tech-label">Intención & Coincidencia de Reglas</span>
                 </div>
               </div>
               <div className="node-content-summary">
                 <div className="summary-pill">
-                  <span>Modo: {routingMode === 'hybrid' ? '⚡ Híbrido' : routingMode === 'template_first' ? '📑 Plantilla' : '🧠 100% IA'}</span>
+                  <span>4 Departamentos Configurados</span>
                 </div>
                 <div className="summary-pill">
                   <Clock size={12} /> {config.schedule?.enabled ? 'Horario Comercial' : '24/7 Activo'}
                 </div>
               </div>
-              <div className="node-port port-bottom-left" title="Salida Rama Plantillas" />
-              <div className="node-port port-bottom-right" title="Salida Rama IA" />
+              <div className="node-port port-bottom-left" />
+              <div className="node-port port-bottom-right" />
             </div>
 
-            {/* BRANCH A (Left): Meta WhatsApp Templates */}
+            {/* BRANCH 1: Ventas & Planes (#103) */}
             <div
-              className={`studio-node template-node ${selectedNodeId === 'node-templates' ? 'is-selected' : ''}`}
-              style={{ left: '60px', top: '320px', width: '280px' }}
-              onClick={() => handleSelectNode('node-templates')}
+              className={`studio-node branch-node branch-green ${selectedNodeId === 'node-branch-sales' ? 'is-selected' : ''} ${activeSimulatedBranch === 'branch-sales' ? 'branch-active-glow' : ''}`}
+              style={{ left: '15px', top: '295px', width: '210px' }}
+              onClick={() => handleSelectNode('node-branch-sales')}
             >
               <div className="node-port port-top" />
-              <div className="node-badge-tag amber">📑 RESPUESTA OFICIAL META</div>
+              <div className="node-badge-tag emerald">💼 VENTAS</div>
               <div className="node-main-header">
-                <div className="node-icon-wrapper amber">
-                  <FileText size={18} />
-                </div>
                 <div className="node-header-text">
-                  <h5>Plantillas WhatsApp</h5>
-                  <span className="node-tech-label">Avisos y Formatos Aprobados</span>
+                  <div className="branch-title-row">
+                    <span className="template-num-badge">#103</span>
+                    <span className="branch-name">Planes Fibra</span>
+                  </div>
+                  <span className="node-tech-label">Modo Híbrido IA</span>
                 </div>
               </div>
-              <div className="node-content-summary">
+              <div className="node-content-summary mini">
                 <div className="summary-pill">
-                  <span>📋 {templates.length} plantillas activas</span>
+                  <span>📄 Listas de Precios RAG</span>
                 </div>
                 <div className="summary-pill">
-                  <span>🖼️ Botones & Multimedia</span>
+                  <span>🔘 Botón "Contratar"</span>
                 </div>
               </div>
               <div className="node-port port-bottom" />
             </div>
 
-            {/* BRANCH B (Right): Generative AI Engine + Knowledge Subnode */}
+            {/* BRANCH 2: Cobranzas & Facturación (#102) */}
             <div
-              className={`studio-node ai-node ${selectedNodeId === 'node-ai' ? 'is-selected' : ''}`}
-              style={{ left: '460px', top: '290px', width: '300px' }}
-              onClick={() => handleSelectNode('node-ai')}
+              className={`studio-node branch-node branch-amber ${selectedNodeId === 'node-branch-billing' ? 'is-selected' : ''} ${activeSimulatedBranch === 'branch-billing' ? 'branch-active-glow' : ''}`}
+              style={{ left: '235px', top: '295px', width: '210px' }}
+              onClick={() => handleSelectNode('node-branch-billing')}
             >
               <div className="node-port port-top" />
-              <div className="node-badge-tag purple">🧠 MOTOR IA MULTIMODAL</div>
+              <div className="node-badge-tag amber">💳 COBRANZAS</div>
               <div className="node-main-header">
-                <div className="node-icon-wrapper purple">
-                  <Bot size={18} />
+                <div className="node-header-text">
+                  <div className="branch-title-row">
+                    <span className="template-num-badge">#102</span>
+                    <span className="branch-name">Saldo & Pagos</span>
+                  </div>
+                  <span className="node-tech-label">Plantilla Meta Directa</span>
+                </div>
+              </div>
+              <div className="node-content-summary mini">
+                <div className="summary-pill">
+                  <span>🏦 Datos Bancarios & Link</span>
+                </div>
+                <div className="summary-pill">
+                  <span>🔘 Botón "Enviar Comprobante"</span>
+                </div>
+              </div>
+              <div className="node-port port-bottom" />
+            </div>
+
+            {/* BRANCH 3: Soporte Técnico (#104) */}
+            <div
+              className={`studio-node branch-node branch-red ${selectedNodeId === 'node-branch-support' ? 'is-selected' : ''} ${activeSimulatedBranch === 'branch-support' ? 'branch-active-glow' : ''}`}
+              style={{ left: '455px', top: '295px', width: '210px' }}
+              onClick={() => handleSelectNode('node-branch-support')}
+            >
+              <div className="node-port port-top" />
+              <div className="node-badge-tag rose">🛠️ SOPORTE</div>
+              <div className="node-main-header">
+                <div className="node-header-text">
+                  <div className="branch-title-row">
+                    <span className="template-num-badge">#104</span>
+                    <span className="branch-name">Diagnóstico ONT</span>
+                  </div>
+                  <span className="node-tech-label">Híbrido / Falla Red</span>
+                </div>
+              </div>
+              <div className="node-content-summary mini">
+                <div className="summary-pill">
+                  <span>🔴 Verificación Luces PON/LOS</span>
+                </div>
+                <div className="summary-pill">
+                  <span>🔘 Botón "Abrir Ticket"</span>
+                </div>
+              </div>
+              <div className="node-port port-bottom" />
+            </div>
+
+            {/* BRANCH 4: Atención General (#101) */}
+            <div
+              className={`studio-node branch-node branch-purple ${selectedNodeId === 'node-branch-custom' ? 'is-selected' : ''} ${activeSimulatedBranch === 'branch-custom' ? 'branch-active-glow' : ''}`}
+              style={{ left: '675px', top: '295px', width: '210px' }}
+              onClick={() => handleSelectNode('node-branch-custom')}
+            >
+              <div className="node-port port-top" />
+              <div className="node-badge-tag purple">🤝 ATENCIÓN</div>
+              <div className="node-main-header">
+                <div className="node-header-text">
+                  <div className="branch-title-row">
+                    <span className="template-num-badge">#101</span>
+                    <span className="branch-name">Menú Principal</span>
+                  </div>
+                  <span className="node-tech-label">Plantilla / Encuesta</span>
+                </div>
+              </div>
+              <div className="node-content-summary mini">
+                <div className="summary-pill">
+                  <span>👋 Saludo & Opciones</span>
+                </div>
+                <div className="summary-pill">
+                  <span>🔘 Botones de Roles</span>
+                </div>
+              </div>
+              <div className="node-port port-bottom" />
+            </div>
+
+            {/* NODE 4: Decision & Generation Matrix (Meta Templates vs AI Engine) */}
+            <div
+              className={`studio-node decision-node ${selectedNodeId === 'node-decision' ? 'is-selected' : ''}`}
+              style={{ left: '260px', top: '480px', width: '380px' }}
+              onClick={() => handleSelectNode('node-decision')}
+            >
+              <div className="node-port port-top" />
+              <div className="node-badge-tag cyan">⚖️ 4. MATRIZ DE RESPUESTA & IA</div>
+              <div className="node-main-header">
+                <div className="node-icon-wrapper cyan">
+                  <Sparkles size={18} />
                 </div>
                 <div className="node-header-text">
-                  <h5>IA {config.llmConfig?.provider?.toUpperCase() || 'CHATGPT'}</h5>
-                  <span className="node-tech-label">Rol: {roleName}</span>
+                  <h5>Bifurcador de Generación</h5>
+                  <span className="node-tech-label">Plantilla Oficial Meta ⚡ Híbrido 🧠 Motor LLM</span>
                 </div>
               </div>
               <div className="node-content-summary">
                 <div className="summary-pill">
-                  <Sparkles size={12} /> Modelo: {config.llmConfig?.model || 'gpt-4o-mini'}
+                  <Database size={12} /> {docs.length} Documentos RAG + {urls.length} URLs
                 </div>
                 <div className="summary-pill">
-                  <span>🌡️ Temp: {config.llmConfig?.temperature || 0.7}</span>
+                  <Bot size={12} /> {config.llmConfig?.model || 'gpt-4o-mini'} ({config.llmConfig?.provider || 'ChatGPT'})
                 </div>
               </div>
-
-              {/* Sub-node attached: RAG Knowledge base */}
-              <div
-                className={`knowledge-subcard ${selectedNodeId === 'node-knowledge' ? 'is-active-sub' : ''}`}
-                onClick={e => {
-                  e.stopPropagation();
-                  handleSelectNode('node-knowledge');
-                }}
-              >
-                <div className="subcard-header">
-                  <Database size={14} />
-                  <span>Base de Conocimientos (RAG)</span>
-                </div>
-                <div className="subcard-tags">
-                  <span className="k-tag">📄 {docs.length} Documentos / Precios</span>
-                  <span className="k-tag">🌐 {urls.length} URLs Web</span>
-                </div>
-              </div>
-
               <div className="node-port port-bottom" />
             </div>
 
             {/* NODE 5: WhatsApp Output Gateway */}
             <div
               className={`studio-node output-node ${selectedNodeId === 'node-output' ? 'is-selected' : ''}`}
-              style={{ left: '260px', top: '510px', width: '280px' }}
+              style={{ left: '300px', top: '625px', width: '300px' }}
               onClick={() => handleSelectNode('node-output')}
             >
               <div className="node-port port-top" />
-              <div className="node-badge-tag teal">🚀 SALIDA WHATSAPP</div>
+              <div className="node-badge-tag teal">🚀 5. GATEWAY DE SALIDA WHATSAPP</div>
               <div className="node-main-header">
                 <div className="node-icon-wrapper teal">
                   <Send size={18} />
                 </div>
                 <div className="node-header-text">
-                  <h5>Despacho al Cliente</h5>
-                  <span className="node-tech-label">API Gateway & Memoria</span>
+                  <h5>Despacho con Botones Interactivos</h5>
+                  <span className="node-tech-label">WhatsApp Poll / Quick Reply Buttons</span>
                 </div>
               </div>
               <div className="node-content-summary">
                 <div className="summary-pill">
-                  <CheckCircle2 size={12} /> Entrega garantizada
+                  <CheckCircle2 size={12} /> Despacho Instantáneo
                 </div>
                 <div className="summary-pill">
-                  <span>💬 Historial de chat actualizado</span>
+                  <span>🔘 Botones de Elección Única</span>
                 </div>
               </div>
             </div>
@@ -573,28 +673,28 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
               className={`insp-tab-btn ${inspectorTab === 'simulator' ? 'active' : ''}`}
               onClick={() => setInspectorTab('simulator')}
             >
-              <Play size={14} /> Simulador en Vivo
+              <Play size={14} /> Simulador
             </button>
             <button
               type="button"
               className={`insp-tab-btn ${inspectorTab === 'triggers' ? 'active' : ''}`}
               onClick={() => setInspectorTab('triggers')}
             >
-              <Zap size={14} /> Plantillas Afiliadas ({config.templateTriggers?.filter(t => t.enabled).length || 5})
+              <Hash size={14} /> Plantillas #{activeTriggers.length}
             </button>
             <button
               type="button"
               className={`insp-tab-btn ${inspectorTab === 'knowledge' ? 'active' : ''}`}
               onClick={() => setInspectorTab('knowledge')}
             >
-              <Database size={14} /> Fuentes RAG ({docs.length + urls.length})
+              <Database size={14} /> RAG ({docs.length + urls.length})
             </button>
             <button
               type="button"
               className={`insp-tab-btn ${inspectorTab === 'node' ? 'active' : ''}`}
               onClick={() => setInspectorTab('node')}
             >
-              <Sliders size={14} /> Propiedades Nodo
+              <Sliders size={14} /> Inspector
             </button>
           </div>
 
@@ -620,19 +720,19 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
                   <h4>Simulador Interactivo de Flujo</h4>
                 </div>
                 <p>
-                  Escribe un mensaje de cliente para probar el flujo de ejecución completo en tiempo real.
+                  Prueba cómo el bot enruta cada consulta entre los roles, selecciona la plantilla numerada (#101, #102, #103, #104) o invoca a la IA.
                 </p>
               </div>
 
               {/* Test Input */}
               <div className="simulator-input-card">
-                <label className="input-label">Mensaje de Prueba del Cliente:</label>
+                <label className="input-label">Mensaje o Clic de Botón:</label>
                 <textarea
                   className="test-textarea"
                   rows={3}
                   value={testMessage}
                   onChange={e => setTestMessage(e.target.value)}
-                  placeholder="Escribe una consulta de prueba..."
+                  placeholder="Escribe una consulta de prueba o simula clic de botón..."
                 />
                 <div className="quick-prompts-row">
                   <button
@@ -640,28 +740,28 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
                     className="quick-chip"
                     onClick={() => setTestMessage('Hola buenas tardes')}
                   >
-                    👋 Saludo
+                    👋 #101 Menú Principal
                   </button>
                   <button
                     type="button"
                     className="quick-chip"
                     onClick={() => setTestMessage('Hola, ¿cuánto debo de mi mensualidad?')}
                   >
-                    💳 Consulta Saldo
+                    💳 #102 Saldo & Pagos
                   </button>
                   <button
                     type="button"
                     className="quick-chip"
                     onClick={() => setTestMessage('¿Qué planes y precios tienen disponibles?')}
                   >
-                    🚀 Planes Fibra
+                    🚀 #103 Planes Fibra
                   </button>
                   <button
                     type="button"
                     className="quick-chip"
                     onClick={() => setTestMessage('No tengo internet y la luz LOS está roja')}
                   >
-                    🔧 Soporte / Fallas
+                    🔧 #104 Soporte Técnico
                   </button>
                 </div>
                 <button
@@ -671,14 +771,14 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
                   disabled={isExecuting || !testMessage.trim()}
                 >
                   <Play size={16} />
-                  {isExecuting ? 'Simulando ejecución...' : 'Simular Flujo Completo'}
+                  {isExecuting ? 'Simulando ejecución en vivo...' : 'Ejecutar Simulación del Flujo'}
                 </button>
               </div>
 
               {/* Execution Steps Trace */}
               {executionSteps.length > 0 && (
                 <div className="execution-trace-card">
-                  <h5>Trazabilidad de Nodos:</h5>
+                  <h5>Trazabilidad de Nodos en Ejecución:</h5>
                   <div className="steps-list">
                     {executionSteps.map(s => (
                       <div key={s.nodeId} className={`trace-step-item status-${s.status}`}>
@@ -709,7 +809,7 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
                     <span className="bubble-time">Ahora</span>
                   </div>
                   <div className="whatsapp-bubble-box">
-                    <p>{finalOutput}</p>
+                    <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{finalOutput}</p>
                   </div>
                 </div>
               )}
@@ -859,76 +959,79 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
                   <div className="inspector-title-box">
                     <div className="title-row">
                       <GitFork size={16} className="title-icon blue" />
-                      <h4>Nodo: Enrutador Inteligente</h4>
+                      <h4>Nodo: Clasificador Multi-Rol</h4>
                     </div>
-                    <p>Clasifica la intención del cliente para decidir si despacha una Plantilla de Meta o invoca a la IA.</p>
+                    <p>Enruta automáticamente entre departamentos y evalúa si despachar plantilla numerada o invocar a la IA.</p>
                   </div>
 
                   <div className="rule-card">
-                    <span className="rule-badge">Regla 1: Plantillas Oficiales</span>
-                    <p>Si el usuario solicita información estructurada o avisos formales, selecciona la plantilla de Meta correspondiente.</p>
+                    <span className="rule-badge">💼 Rama #103: Ventas</span>
+                    <p>Palabras clave de planes, precios, contratar, cobertura → Dispara Asesor de Ventas o Plantilla #103.</p>
                   </div>
 
                   <div className="rule-card">
-                    <span className="rule-badge">Regla 2: Preguntas y Dudas Abiertas</span>
-                    <p>Si el cliente hace preguntas abiertas o consultas sobre planes, invoca al motor de IA con los documentos de precios adjuntos.</p>
+                    <span className="rule-badge">💳 Rama #102: Cobranzas</span>
+                    <p>Palabras clave de pagar, saldo, factura, bancos → Dispara Plantilla Oficial Meta #102 de Estado de Cuenta.</p>
                   </div>
 
                   <div className="rule-card">
-                    <span className="rule-badge">Regla 3: Fuera de Horario</span>
-                    <p>Si está fuera del horario comercial, envía el mensaje de aviso o plantilla de fuera de horario configurada.</p>
+                    <span className="rule-badge">🛠️ Rama #104: Soporte Técnico</span>
+                    <p>Palabras clave de sin internet, luz roja, caída, lentitud → Dispara Diagnóstico ONT #104.</p>
+                  </div>
+
+                  <div className="rule-card">
+                    <span className="rule-badge">🤝 Rama #101: Menú Principal</span>
+                    <p>Saludos o bienvenida → Despacha Menú con Botones de Selección #101.</p>
                   </div>
                 </div>
               )}
 
-              {selectedNodeId === 'node-templates' && (
+              {selectedNodeId.startsWith('node-branch-') && (
                 <div className="node-props-block">
                   <div className="inspector-title-box">
                     <div className="title-row">
-                      <FileText size={16} className="title-icon amber" />
-                      <h4>Nodo: Plantillas Oficiales Meta</h4>
+                      <Layers size={16} className="title-icon purple" />
+                      <h4>Nodo: Rama de Departamento</h4>
                     </div>
-                    <p>Plantillas multimedia sincronizadas directamente con WhatsApp Cloud API.</p>
+                    <p>Configura las plantillas numeradas y el comportamiento asignado a este rol.</p>
                   </div>
-                  <div className="templates-mini-list">
-                    {templates.length === 0 ? (
-                      <p className="empty-sources-msg">No hay plantillas creadas todavía. Puedes crearlas en el menú Plantillas.</p>
-                    ) : (
-                      templates.map(t => (
-                        <div key={t.id} className="template-mini-row">
-                          <span className="t-name">📑 {t.name}</span>
-                          <span className="t-status">{(t as any).status || 'APPROVED'}</span>
-                        </div>
-                      ))
-                    )}
+                  <div className="prop-field">
+                    <span className="prop-label">Nodo ID:</span>
+                    <span className="prop-value font-mono">{selectedNodeId}</span>
+                  </div>
+                  <div className="prop-field">
+                    <span className="prop-label">Configuración Rápida:</span>
+                    <button
+                      type="button"
+                      className="btn-add-source"
+                      onClick={() => setInspectorTab('triggers')}
+                    >
+                      <Hash size={14} /> Administrar Plantillas Afiliadas
+                    </button>
                   </div>
                 </div>
               )}
 
-              {selectedNodeId === 'node-ai' && (
+              {selectedNodeId === 'node-decision' && (
                 <div className="node-props-block">
                   <div className="inspector-title-box">
                     <div className="title-row">
-                      <Bot size={16} className="title-icon purple" />
-                      <h4>Nodo: Motor IA ({config.llmConfig?.provider?.toUpperCase() || 'CHATGPT'})</h4>
+                      <Sparkles size={16} className="title-icon cyan" />
+                      <h4>Nodo: Matriz de Respuesta</h4>
                     </div>
-                    <p>Genera respuestas inteligentes basadas en el rol asignado y la base de conocimiento.</p>
+                    <p>Define cómo se genera la respuesta final según el modo elegido en cada plantilla.</p>
                   </div>
                   <div className="prop-field">
-                    <span className="prop-label">Rol Activo:</span>
-                    <span className="prop-value">{roleName}</span>
+                    <span className="prop-label">Modo Solo Plantilla:</span>
+                    <span className="prop-value">Envío exacto del formato Meta/Local sin alterar texto</span>
                   </div>
                   <div className="prop-field">
-                    <span className="prop-label">Modelo:</span>
-                    <span className="prop-value font-mono">{config.llmConfig?.model || 'gpt-4o-mini'}</span>
+                    <span className="prop-label">Modo Híbrido IA:</span>
+                    <span className="prop-value">Estructura base enriquecida con datos dinámicos RAG</span>
                   </div>
                   <div className="prop-field">
-                    <span className="prop-label">Temperatura:</span>
-                    <span className="prop-value">{config.llmConfig?.temperature || 0.7} (Equilibrio)</span>
-                  </div>
-                  <div className="prop-field">
-                    <span className="prop-label">Empresa:</span>
-                    <span className="prop-value">{config.businessName}</span>
+                    <span className="prop-label">Modo Solo IA:</span>
+                    <span className="prop-value">Generación adaptativa 100% por LLM ({config.llmConfig?.provider?.toUpperCase()})</span>
                   </div>
                 </div>
               )}
@@ -940,15 +1043,19 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
                       <Send size={16} className="title-icon teal" />
                       <h4>Nodo: Despacho WhatsApp</h4>
                     </div>
-                    <p>Envía la respuesta final formateada directamente a la conversación del cliente en WhatsApp.</p>
+                    <p>Envía la respuesta final formateada directamente a la conversación del cliente en WhatsApp con botones interactivos.</p>
                   </div>
                   <div className="prop-field">
                     <span className="prop-label">Canal de Salida:</span>
-                    <span className="prop-value">WhatsApp Cloud API</span>
+                    <span className="prop-value">WhatsApp Cloud API Gateway</span>
+                  </div>
+                  <div className="prop-field">
+                    <span className="prop-label">Formato Interactivo:</span>
+                    <span className="prop-value">🟢 Encuestas WhatsApp de Opción Única (Compatibilidad 100%)</span>
                   </div>
                   <div className="prop-field">
                     <span className="prop-label">Memoria de Conversación:</span>
-                    <span className="prop-value">🟢 Habilitada (Persiste contexto)</span>
+                    <span className="prop-value">🟢 Habilitada</span>
                   </div>
                 </div>
               )}
@@ -959,3 +1066,4 @@ export function WorkflowCanvas({ config, onChange, sessionId }: WorkflowCanvasPr
     </div>
   );
 }
+

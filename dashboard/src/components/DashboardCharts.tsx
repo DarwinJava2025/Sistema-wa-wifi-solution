@@ -16,7 +16,7 @@ import {
   Bar,
 } from 'recharts';
 import { BarChart3 } from 'lucide-react';
-import { useStatsMessagesQuery } from '../hooks/queries';
+import { useStatsMessagesQuery, useSessionDetailedStatsQuery } from '../hooks/queries';
 import type { StatsPeriod } from '../services/api';
 import './DashboardCharts.css';
 
@@ -60,10 +60,16 @@ function shortChat(chatId: string): string {
   return chatId.split('@')[0] || chatId;
 }
 
-export function DashboardCharts() {
+export interface DashboardChartsProps {
+  sessionId?: string;
+}
+
+export function DashboardCharts({ sessionId }: DashboardChartsProps = {}) {
   const { t } = useTranslation();
   const [period, setPeriod] = useState<StatsPeriod>('24h');
   const { data, isLoading, isError, error } = useStatsMessagesQuery(period);
+  const isSessionFiltered = Boolean(sessionId && sessionId !== 'all');
+  const { data: sessionStats } = useSessionDetailedStatsQuery(sessionId, isSessionFiltered);
 
   // Non-admin keys 403 on /stats/messages → hide the section entirely. Any OTHER error (e.g. a
   // server 500) is a real fault: surface a small notice below instead of silently vanishing, which
@@ -75,7 +81,10 @@ export function DashboardCharts() {
   const byType = Object.entries(data?.byType ?? {})
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value);
-  const topChats = (data?.topChats ?? [])
+  const rawTopChats = (isSessionFiltered && sessionStats?.topChats)
+    ? sessionStats.topChats
+    : (data?.topChats ?? []);
+  const topChats = rawTopChats
     .slice(0, 8)
     .map(c => ({ name: c.chatName || shortChat(c.chatId), count: c.messageCount }));
   const hasData = timeSeries.length > 0 || byType.length > 0 || topChats.length > 0;

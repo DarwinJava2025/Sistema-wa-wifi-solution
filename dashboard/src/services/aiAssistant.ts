@@ -1,4 +1,8 @@
-// AI Assistant, LLM Engine & Conversation Memory Service for OpenWA Dashboard
+import {
+  findMatchingApiEndpoint,
+  executeApiEndpoint,
+  extractContextFromMessage,
+} from './apiEndpointsService';
 
 export type AiRoleType = 'support' | 'sales' | 'customer_care' | 'billing' | 'custom';
 export type LlmProviderType = 'groq' | 'openai' | 'gemini' | 'openrouter' | 'ollama' | 'offline';
@@ -20,6 +24,9 @@ export interface ConversationMemory {
   currentStage?: string;
   notes?: string[];
   lastSummary?: string;
+  activeDepartmentId?: string;
+  activeRole?: AiRoleType;
+  departmentSelectedAt?: string;
   updatedAt: string;
 }
 
@@ -54,12 +61,13 @@ export type TriggerIntentType = 'greeting' | 'balance' | 'plans' | 'support' | '
 
 export interface TemplateTriggerButton {
   text: string;
-  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER';
+  type: 'QUICK_REPLY' | 'URL' | 'PHONE_NUMBER' | 'COPY_CODE';
   value: string;
 }
 
 export interface TemplateTriggerMapping {
   id: string;
+  templateNumber?: number; // Unique numerical code e.g. 101, 102 for fast association
   enabled: boolean;
   name: string; // e.g. "👋 Saludo de Bienvenida"
   intentType: TriggerIntentType;
@@ -73,8 +81,149 @@ export interface TemplateTriggerMapping {
   body: string;
   footer?: string;
   buttons?: TemplateTriggerButton[];
-  action: 'send_template' | 'ai_hybrid';
+  action: 'send_template' | 'ai_hybrid' | 'pure_ai';
+  source?: 'meta' | 'local' | 'custom';
+  metaCategory?: 'UTILITY' | 'MARKETING' | 'AUTHENTICATION';
   dynamicAiMatch?: boolean; // When true, AI semantically triggers template even without exact keyword
+}
+
+export interface ParsedMetaTemplate {
+  name: string;
+  category: 'MARKETING' | 'UTILITY' | 'AUTHENTICATION';
+  headerType: 'none' | 'text' | 'image' | 'video' | 'audio' | 'document';
+  headerText?: string;
+  mediaUrl?: string;
+  body: string;
+  footer?: string;
+  buttons: TemplateTriggerButton[];
+  variables: string[];
+}
+
+/** Parse JSON or raw text copied from Meta WhatsApp Business Manager or Cloud API */
+export function parseMetaTemplateInput(input: string): ParsedMetaTemplate | null {
+  if (!input || !input.trim()) return null;
+  const raw = input.trim();
+
+  // 1. Try parsing JSON (Meta Graph API / WhatsApp Cloud API schema)
+  try {
+    const data = JSON.parse(raw);
+    const components = Array.isArray(data.components) ? data.components : [];
+    
+    let headerType: 'none' | 'text' | 'image' | 'video' | 'audio' | 'document' = 'none';
+    let headerText = '';
+    let mediaUrl = '';
+    let body = '';
+    let footer = '';
+    const buttons: TemplateTriggerButton[] = [];
+
+    for (const comp of components) {
+      const type = (comp.type || '').toUpperCase();
+      if (type === 'HEADER') {
+        const format = (comp.format || 'TEXT').toUpperCase();
+        if (format === 'TEXT') {
+          headerType = 'text';
+          headerText = comp.text || '';
+        } else if (format === 'IMAGE') {
+          headerType = 'image';
+          mediaUrl = comp.example?.header_handle?.[0] || comp.url || '';
+        } else if (format === 'VIDEO') {
+          headerType = 'video';
+          mediaUrl = comp.example?.header_handle?.[0] || comp.url || '';
+        } else if (format === 'DOCUMENT') {
+          headerType = 'document';
+          mediaUrl = comp.url || '';
+        }
+      } else if (type === 'BODY') {
+        body = comp.text || '';
+      } else if (type === 'FOOTER') {
+        footer = comp.text || '';
+      } else if (type === 'BUTTONS') {
+        const btns = Array.isArray(comp.buttons) ? comp.buttons : [];
+        btns.forEach((b: any, i: number) => {
+          const bType = (b.type || 'QUICK_REPLY').toUpperCase();
+          buttons.push({
+            text: b.text || `Botón ${i + 1}`,
+            type: bType === 'URL' ? 'URL' : bType === 'PHONE_NUMBER' ? 'PHONE_NUMBER' : 'QUICK_REPLY',
+            value: b.url || b.phone_number || b.text || `BTN_${i + 1}`,
+          });
+        });
+      }
+    }
+
+    if (!body && typeof data.body === 'string') body = data.body;
+    if (!body && typeof data.text === 'string') body = data.text;
+
+    const vars: string[] = [];
+    const varMatches = (body || '').match(/\{\{([^}]+)\}\}/g);
+    if (varMatches) {
+      varMatches.forEach(v => {
+        const clean = v.replace(/[{}]/g, '').trim();
+        if (!vars.includes(clean)) vars.push(clean);
+      });
+    }
+
+    return {
+      name: data.name || 'Plantilla Meta Importada',
+      category: data.category || 'UTILITY',
+      headerType,
+      headerText,
+      mediaUrl,
+      body: body || 'Cuerpo de la plantilla Meta.',
+      footer,
+      buttons,
+      variables: vars,
+    };
+  } catch {
+    // 2. Plain Text / Meta Studio copy format parser
+    const vars: string[] = [];
+    const varMatches = raw.match(/\{\{([^}]+)\}\}/g);
+    if (varMatches) {
+      varMatches.forEach(v => {
+        const clean = v.replace(/[{}]/g, '').trim();
+        if (!vars.includes(clean)) vars.push(clean);
+      });
+    }
+
+    return {
+      name: 'Plantilla Meta Pegada',
+      category: 'UTILITY',
+      headerType: 'none',
+      headerText: '',
+      mediaUrl: '',
+      body: raw,
+      footer: '',
+      buttons: [],
+      variables: vars,
+    };
+  }
+}
+
+export type DepartmentResponseMode = 'ai' | 'template' | 'hybrid';
+
+export interface MultiRoleDepartment {
+  id: string; // e.g. 'customer_care', 'support', 'sales', 'billing', 'custom_1'
+  role: AiRoleType;
+  name: string; // e.g. "Atención al Cliente"
+  description?: string;
+  icon?: string;
+  optionKey: string; // e.g. "1", "2", "3", "4"
+  keywords: string[]; // e.g. ["1", "atencion", "cliente", "informacion"]
+  prompt: string;
+  responseMode?: DepartmentResponseMode; // 'ai' = Sólo IA, 'template' = Respuesta Predeterminada / Plantilla, 'hybrid' = Plantilla + IA
+  presetResponse?: string; // Plantilla o texto de respuesta determinada con variables
+  templateHeader?: string;
+  templateFooter?: string;
+  templateButtons?: Array<{ text: string; value: string }>;
+  templateIds?: string[];
+  enabled: boolean;
+}
+
+export interface MultiRoleConfig {
+  enabled: boolean;
+  menuGreeting: string;
+  resetKeywords: string[];
+  departments: MultiRoleDepartment[];
+  defaultDepartmentId?: string;
 }
 
 export interface ChatAiConfig {
@@ -90,6 +239,7 @@ export interface ChatAiConfig {
   documents?: KnowledgeDocument[]; // Attached files / price lists
   urls?: KnowledgeUrl[]; // Attached web URLs / catalogs
   templateTriggers?: TemplateTriggerMapping[]; // Affiliated templates & trigger mappings
+  multiRole?: MultiRoleConfig; // Multi-role IVR routing & initial greeting menu
   llmConfig?: LlmConfig; // LLM Provider settings
   schedule: BusinessSchedule;
   updatedAt: string;
@@ -379,6 +529,7 @@ export function getDefaultTemplateTriggers(_role?: AiRoleType): TemplateTriggerM
   return [
     {
       id: 'trig_greeting',
+      templateNumber: 101,
       enabled: true,
       name: '👋 Saludo & Bienvenida Automática',
       intentType: 'greeting',
@@ -400,6 +551,7 @@ export function getDefaultTemplateTriggers(_role?: AiRoleType): TemplateTriggerM
     },
     {
       id: 'trig_balance',
+      templateNumber: 102,
       enabled: true,
       name: '💳 Consulta de Saldo & Facturación',
       intentType: 'balance',
@@ -420,6 +572,7 @@ export function getDefaultTemplateTriggers(_role?: AiRoleType): TemplateTriggerM
     },
     {
       id: 'trig_plans',
+      templateNumber: 103,
       enabled: true,
       name: '⚡ Planes & Tarifas de Internet Fibra',
       intentType: 'plans',
@@ -441,6 +594,7 @@ export function getDefaultTemplateTriggers(_role?: AiRoleType): TemplateTriggerM
     },
     {
       id: 'trig_support',
+      templateNumber: 104,
       enabled: true,
       name: '🛠️ Soporte Técnico & Reporte de Fallas',
       intentType: 'support',
@@ -461,6 +615,7 @@ export function getDefaultTemplateTriggers(_role?: AiRoleType): TemplateTriggerM
     },
     {
       id: 'trig_agent',
+      templateNumber: 105,
       enabled: true,
       name: '👤 Transferencia a Asesor Humano',
       intentType: 'agent',
@@ -494,6 +649,15 @@ export function findMatchingTemplateTrigger(
   for (const trig of triggers) {
     if (!trig.enabled) continue;
 
+    // Direct numeric ID match e.g. "101", "#101", "plantilla 101", "plantilla #101"
+    const idMatch = trig.templateNumber
+      ? q === String(trig.templateNumber) ||
+        q === `#${trig.templateNumber}` ||
+        q === `plantilla ${trig.templateNumber}` ||
+        q === `plantilla #${trig.templateNumber}` ||
+        q.includes(`#${trig.templateNumber}`)
+      : false;
+
     const keywordMatch = trig.keywords.some(kw => {
       const cleanKw = kw.toLowerCase().trim();
       if (!cleanKw) return false;
@@ -516,7 +680,7 @@ export function findMatchingTemplateTrigger(
       }
     }
 
-    if (keywordMatch || dynamicMatch) {
+    if (idMatch || keywordMatch || dynamicMatch) {
       const bizName = config?.businessName || 'WiFi Solution Pro';
       const clientName = memory?.customerName || 'Estimado(a) Cliente';
       const ticketId = memory?.ticketId || `${Math.floor(1000 + Math.random() * 9000)}`;
@@ -566,6 +730,139 @@ export function findMatchingTemplateTrigger(
   return null;
 }
 
+/** Generate automated menu greeting based on active departments with interactive buttons */
+export function generateMenuGreetingFromDepartments(departments: MultiRoleDepartment[], businessName = '{{empresa}}'): string {
+  const activeDepts = (departments || []).filter(d => d.enabled);
+  if (activeDepts.length === 0) {
+    return `👋 ¡Hola! Te damos la bienvenida a *${businessName}* 🚀\n\n¿En qué podemos ayudarte el día de hoy?\n\n_Escribe tu consulta y un asesor te atenderá de inmediato._`;
+  }
+
+  let msg = `👋 ¡Hola! Te damos la bienvenida a *${businessName}* 🚀\n\nPor favor, selecciona el área de tu interés tocando uno de los *botones interactivos* 👇 o respondiendo con el número:\n\n`;
+  activeDepts.forEach(d => {
+    const icon = d.icon || AI_ROLES[d.role]?.icon || '🔹';
+    msg += `【 *${d.optionKey}* 】 ${icon} *${d.name}*\n_${d.description || ''}_\n\n`;
+  });
+  msg += `🔘 *Botones de Selección Rápida:*`;
+  activeDepts.forEach(d => {
+    const icon = d.icon || AI_ROLES[d.role]?.icon || '👉';
+    msg += `\n┌────────────────────────────┐\n│  ${icon} [ ${d.optionKey} ] ${d.name}\n└────────────────────────────┘`;
+  });
+  msg += `\n\n_📌 Toca un botón interactivo abajo o escribe *MENU* para volver al inicio._`;
+  return msg;
+}
+
+/** Format a department preset template with dynamic client, ticket and business variables */
+export function formatDepartmentTemplate(
+  dept: MultiRoleDepartment,
+  businessName = 'WiFi Solution Pro',
+  clientName = 'Estimado(a) Cliente',
+  ticketId?: string,
+): string {
+  const tId = ticketId || `${Math.floor(1000 + Math.random() * 9000)}`;
+  const todayDate = new Date().toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  let rawBody = dept.presetResponse?.trim();
+  if (!rawBody) {
+    const roleDef = AI_ROLES[dept.role] || AI_ROLES.custom;
+    rawBody = `✅ *Conectado con ${dept.name}* ${dept.icon || roleDef.icon}\n\n¡Hola {{cliente}}! Te atiende el área de *${dept.name}* en *{{empresa}}*.\n\n${dept.description || '¿En qué podemos colaborarte el día de hoy?'}\n\n_Escribe *MENU* para volver a las opciones principales._`;
+  }
+
+  let formatted = rawBody
+    .replace(/\{\{empresa\}\}/gi, businessName)
+    .replace(/\{\{cliente\}\}/gi, clientName)
+    .replace(/\{\{nombre\}\}/gi, clientName)
+    .replace(/\{\{ticket\}\}/gi, tId)
+    .replace(/\{\{fecha\}\}/gi, todayDate)
+    .replace(/\{\{saldo\}\}/gi, '25.00')
+    .replace(/\{\{contrato\}\}/gi, 'CT-88421')
+    .replace(/\{\{plan\}\}/gi, 'Fibra 100 Mbps');
+
+  if (dept.templateHeader) {
+    formatted = `*${dept.templateHeader}*\n\n${formatted}`;
+  }
+
+  if (dept.templateFooter) {
+    formatted += `\n\n_${dept.templateFooter}_`;
+  }
+
+  if (dept.templateButtons && dept.templateButtons.length > 0) {
+    formatted += '\n\n🔘 *Opciones Rápidas:*';
+    dept.templateButtons.forEach((btn, idx) => {
+      formatted += `\n[${idx + 1}] ${btn.text}`;
+    });
+  }
+
+  return formatted;
+}
+
+export function getDefaultMultiRoleConfig(businessName = 'WiFi Solution Pro'): MultiRoleConfig {
+  const defaultDepts: MultiRoleDepartment[] = [
+    {
+      id: 'customer_care',
+      role: 'customer_care',
+      name: 'Atención al Cliente',
+      description: 'Información general, sedes, horarios y orientación.',
+      icon: '🤝',
+      optionKey: '1',
+      keywords: ['1', 'atencion', 'cliente', 'atención', 'asesor', 'informacion', 'sede', 'horario', 'oficina'],
+      prompt: AI_ROLES.customer_care.defaultPrompt,
+      responseMode: 'hybrid',
+      presetResponse: `👋 ¡Hola {{cliente}}! Te atiende el área de *Atención al Cliente* en *{{empresa}}* 🤝.\n\n📍 *Oficina Principal:* Torre Empresarial WiFi, Piso 2, Av. Principal.\n⏰ *Horario de Atención:* Lunes a Viernes de 8:00 AM a 6:00 PM y Sábados de 8:30 AM a 1:00 PM.\n\n¿En qué podemos orientarte o qué consulta tienes el día de hoy?\n\n_Escribe *MENU* en cualquier momento para volver al inicio._`,
+      templateIds: ['trig_greeting', 'trig_agent'],
+      enabled: true,
+    },
+    {
+      id: 'support',
+      role: 'support',
+      name: 'Soporte Técnico',
+      description: 'Diagnóstico de averías, luces de ONT/Router y generación de ticket.',
+      icon: '🛠️',
+      optionKey: '2',
+      keywords: ['2', 'soporte', 'falla', 'luz roja', 'sin internet', 'lento', 'router', 'averia', 'ticket', 'los', 'pon'],
+      prompt: AI_ROLES.support.defaultPrompt,
+      responseMode: 'hybrid',
+      presetResponse: `🛠️ *Soporte Técnico Especializado - {{empresa}}*\n\n¡Hola {{cliente}}! Hemos iniciado tu atención con el identificador *[Ticket #ST-{{ticket}}]*.\n\nPara diagnosticar y resolver tu falla de inmediato:\n1️⃣ Indica si la luz *PON* o *LOS* de tu equipo está encendida fija en verde o parpadeando en rojo.\n2️⃣ Indica tu número de cédula o titular del servicio para verificar tu enlace.\n\n_Escribe *MENU* para volver al selector de opciones._`,
+      templateIds: ['trig_support'],
+      enabled: true,
+    },
+    {
+      id: 'sales',
+      role: 'sales',
+      name: 'Ventas y Planes',
+      description: 'Cotización de planes de fibra, precios y agendamiento de instalación.',
+      icon: '💼',
+      optionKey: '3',
+      keywords: ['3', 'ventas', 'planes', 'precios', 'contratar', 'megas', 'fibra', 'costo', 'cotizacion', 'tarifa', 'promocion'],
+      prompt: AI_ROLES.sales.defaultPrompt,
+      responseMode: 'hybrid',
+      presetResponse: `💼 *Ventas y Cotizaciones - {{empresa}}* 🚀\n\n¡Hola {{cliente}}! Conoce nuestros planes de Fibra Óptica de ultra velocidad:\n\n🚀 *Plan Hogar 50 Mbps:* $25/mes\n⚡ *Plan Pro 100 Mbps:* $35/mes (¡Más Vendido!)\n🔥 *Plan Turbo 200 Mbps:* $50/mes\n🏢 *Plan Corporativo Simétrico:* Desde $80/mes\n\n✅ *Incluye:* Instalación prioritaria en 24h y Router WiFi Doble Banda.\n\n¿En qué sector o dirección te encuentras para validar tu cobertura de inmediato?\n\n_Escribe *MENU* para volver al selector de opciones._`,
+      templateIds: ['trig_plans'],
+      enabled: true,
+    },
+    {
+      id: 'billing',
+      role: 'billing',
+      name: 'Cobranzas y Facturación',
+      description: 'Consulta de saldo, cuentas bancarias, pago móvil y comprobantes.',
+      icon: '💳',
+      optionKey: '4',
+      keywords: ['4', 'cobranzas', 'facturacion', 'facturación', 'saldo', 'pagar', 'pago', 'cuenta', 'banco', 'pago movil', 'zelle'],
+      prompt: AI_ROLES.billing.defaultPrompt,
+      responseMode: 'hybrid',
+      presetResponse: `💳 *Cobranzas y Facturación - {{empresa}}*\n\n¡Hola {{cliente}}!\n\n📋 *Cuentas y Métodos de Pago Disponibles:*\n• *Pago Móvil:* Banco Banesco (0134) • 0412-1234567 • RIF: J-40123456-7\n• *Transferencias:* Banesco / Mercantil / Bancamiga\n• *Zelle / Dólares:* pagos@wifisolution.com\n\n📌 Para reportar tu pago, por favor envía la foto o captura del comprobante con tu cédula y número de referencia.\n\n_Escribe *MENU* para volver al selector de opciones._`,
+      templateIds: ['trig_balance'],
+      enabled: true,
+    },
+  ];
+
+  return {
+    enabled: true,
+    menuGreeting: generateMenuGreetingFromDepartments(defaultDepts, businessName),
+    resetKeywords: ['menu', 'menú', 'inicio', 'volver', 'opciones', '0', 'reiniciar', 'cambiar area', 'cambiar'],
+    departments: defaultDepts,
+  };
+}
+
 /** Get all stored session AI configurations */
 export function getAllSessionAiConfigs(): Record<string, ChatAiConfig> {
   if (typeof window === 'undefined') return {};
@@ -578,26 +875,68 @@ export function getAllSessionAiConfigs(): Record<string, ChatAiConfig> {
 }
 
 /** Get AI configuration for a whole Session */
-export function getSessionAiConfig(sessionId: string): ChatAiConfig {
+export function getSessionAiConfig(sessionId: string, sessionName?: string): ChatAiConfig {
   const configs = getAllSessionAiConfigs();
   const globalLlm = getGlobalLlmConfig();
 
-  if (configs[sessionId]) {
-    const c = configs[sessionId];
+  // 1. Direct match by sessionId
+  let c = configs[sessionId];
+
+  // 2. Direct match by sessionName
+  if (!c && sessionName && configs[sessionName]) {
+    c = configs[sessionName];
+  }
+
+  // 3. Search across all stored configs by key, sessionId, or sessionName
+  if (!c) {
+    for (const [k, v] of Object.entries(configs)) {
+      if (
+        k === sessionId ||
+        (sessionName && k === sessionName) ||
+        v.sessionId === sessionId ||
+        (sessionName && v.sessionId === sessionName) ||
+        (v as any).sessionName === sessionId ||
+        (sessionName && (v as any).sessionName === sessionName)
+      ) {
+        c = v;
+        break;
+      }
+    }
+  }
+
+  if (c) {
+    const defaultMulti = getDefaultMultiRoleConfig(c.businessName || 'WiFi Solution Pro');
+    const safeMulti = c.multiRole
+      ? {
+          ...defaultMulti,
+          ...c.multiRole,
+          departments:
+            Array.isArray(c.multiRole.departments) && c.multiRole.departments.length > 0
+              ? c.multiRole.departments
+              : defaultMulti.departments,
+        }
+      : defaultMulti;
+
     return {
       ...c,
-      documents: c.documents || [],
-      urls: c.urls || [],
-      templateTriggers: c.templateTriggers && c.templateTriggers.length > 0 ? c.templateTriggers : getDefaultTemplateTriggers(c.role),
+      sessionId: c.sessionId || sessionId,
+      documents: Array.isArray(c.documents) ? c.documents : [],
+      urls: Array.isArray(c.urls) ? c.urls : [],
+      templateTriggers:
+        Array.isArray(c.templateTriggers) && c.templateTriggers.length > 0
+          ? c.templateTriggers
+          : getDefaultTemplateTriggers(c.role || 'support'),
+      multiRole: safeMulti,
       llmConfig: c.llmConfig || globalLlm,
+      schedule: c.schedule ? { ...DEFAULT_SCHEDULE, ...c.schedule } : { ...DEFAULT_SCHEDULE },
     };
   }
 
   return {
     chatId: '*',
     sessionId,
-    enabled: false,
-    autoPilot: false,
+    enabled: true,
+    autoPilot: true,
     role: 'support',
     customRoleName: '',
     businessName: 'WiFi Solution Pro',
@@ -606,6 +945,7 @@ export function getSessionAiConfig(sessionId: string): ChatAiConfig {
     documents: [],
     urls: [],
     templateTriggers: getDefaultTemplateTriggers('support'),
+    multiRole: getDefaultMultiRoleConfig('WiFi Solution Pro'),
     llmConfig: globalLlm,
     schedule: { ...DEFAULT_SCHEDULE },
     updatedAt: new Date().toISOString(),
@@ -613,18 +953,28 @@ export function getSessionAiConfig(sessionId: string): ChatAiConfig {
 }
 
 /** Save AI configuration for a whole Session */
-export function saveSessionAiConfig(config: ChatAiConfig): void {
+export function saveSessionAiConfig(config: ChatAiConfig, alternateKey?: string): void {
   if (typeof window === 'undefined') return;
   try {
     const configs = getAllSessionAiConfigs();
-    configs[config.sessionId] = {
+    const dataToSave = {
       ...config,
       chatId: '*',
       documents: config.documents || [],
       urls: config.urls || [],
       templateTriggers: config.templateTriggers || getDefaultTemplateTriggers(config.role),
+      multiRole: config.multiRole || getDefaultMultiRoleConfig(config.businessName),
       updatedAt: new Date().toISOString(),
     };
+
+    configs[config.sessionId] = dataToSave;
+    if (alternateKey && alternateKey !== config.sessionId) {
+      configs[alternateKey] = dataToSave;
+    }
+    if ((config as any).sessionName && (config as any).sessionName !== config.sessionId) {
+      configs[(config as any).sessionName] = dataToSave;
+    }
+
     localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(configs));
   } catch (err) {
     console.error('Failed to save session AI config:', err);
@@ -642,6 +992,7 @@ export function getEffectiveAiConfig(sessionId: string, chatId?: string): ChatAi
         ...c,
         documents: c.documents || [],
         urls: c.urls || [],
+        multiRole: c.multiRole || getDefaultMultiRoleConfig(c.businessName),
         llmConfig: c.llmConfig || getGlobalLlmConfig(),
       };
     }
@@ -897,27 +1248,216 @@ async function callLlmChatApi(
   return null;
 }
 
-/** Generate intelligent AI response connected to LLM with persistent personality & conversation memory */
-export async function generateAiChatResponse(
+export interface AiChatReplyResult {
+  text: string;
+  isMenu?: boolean;
+  poll?: {
+    name: string;
+    options: string[];
+    selectableCount?: number;
+  };
+}
+
+/** Generate intelligent AI response with structured buttons / polls */
+export async function generateAiChatResponseDetailed(
   messages: Array<{ body: string; fromMe?: boolean; type?: string }>,
   config: ChatAiConfig,
-): Promise<string> {
+): Promise<AiChatReplyResult> {
   const { isWithin } = isWithinBusinessHours(config.schedule);
 
   // If outside business hours and outOfHoursMode is custom_message, return the away message
   if (!isWithin && config.schedule.enabled && config.schedule.outOfHoursMode === 'custom_message') {
-    return config.schedule.outOfHoursMessage || DEFAULT_SCHEDULE.outOfHoursMessage;
+    return {
+      text: config.schedule.outOfHoursMessage || DEFAULT_SCHEDULE.outOfHoursMessage,
+    };
+  }
+
+  // Extract last user message to evaluate routing and template triggers
+  const lastUserMessages = messages.filter(m => !m.fromMe && m.body).slice(-2);
+  const lastQuery = lastUserMessages[lastUserMessages.length - 1]?.body?.trim() || 'Hola';
+  const cleanQuery = lastQuery.toLowerCase().trim();
+
+  // Extract / update persistent conversational memory for this chat
+  let memory = updateMemoryFromDialogue(config.sessionId, config.chatId || '*', messages, config.role);
+
+  // 0. MULTI-ROLE IVR ROUTING CHECK (Single scanned number supporting multiple departments)
+  if (config.multiRole && config.multiRole.enabled && config.multiRole.departments && config.multiRole.departments.length > 0) {
+    const multi = config.multiRole;
+    const resetKeywords = multi.resetKeywords && multi.resetKeywords.length > 0
+      ? multi.resetKeywords
+      : ['menu', 'menú', 'inicio', 'volver', 'opciones', '0', 'reiniciar', 'cambiar'];
+
+    const formatGreetingMenu = (): AiChatReplyResult => {
+      const biz = config.businessName || 'WiFi Solution Pro';
+      const client = memory.customerName || 'Estimado(a) Cliente';
+      let formatted = multi.menuGreeting
+        .replace(/\{\{empresa\}\}/gi, biz)
+        .replace(/\{\{cliente\}\}/gi, client)
+        .replace(/\{\{nombre\}\}/gi, client);
+      if (!isWithin && config.schedule.enabled) {
+        formatted = '*(Aviso: Fuera de horario de atención)*\n\n' + formatted;
+      }
+
+      const activeDepts = (multi.departments || []).filter(d => d.enabled);
+      const pollOptions = activeDepts.map(d => `${d.icon || '👉'} [${d.optionKey}] ${d.name}`);
+
+      return {
+        text: formatted,
+        isMenu: true,
+        poll: pollOptions.length >= 2 ? {
+          name: `🔘 Selecciona una opción (${biz}):`,
+          options: pollOptions,
+          selectableCount: 1,
+        } : undefined,
+      };
+    };
+
+    // Case A: User explicitly typed MENU / INICIO / 0 to reset routing
+    if (resetKeywords.some(kw => cleanQuery === kw.toLowerCase().trim() || cleanQuery.startsWith(kw.toLowerCase().trim()))) {
+      memory.activeDepartmentId = undefined;
+      memory.activeRole = undefined;
+      saveConversationMemory(config.sessionId, config.chatId || '*', memory);
+      return formatGreetingMenu();
+    }
+
+    // Helper to find a matching enabled department (by Button text, ID, Option Key, Name, or Keywords)
+    const findMatchingDepartment = (text: string) => {
+      const clean = text.toLowerCase().trim();
+      const cleanStripped = clean.replace(/^[^\w\dáéíóúñ]+/, '').trim();
+
+      return multi.departments.find(dept => {
+        if (!dept.enabled) return false;
+        const dName = dept.name.toLowerCase().trim();
+        const dId = dept.id.toLowerCase().trim();
+        const dKey = dept.optionKey ? dept.optionKey.toLowerCase().trim() : '';
+
+        // 1. Direct match by button ID or exact department name
+        if (clean === dId || clean === dName || cleanStripped === dName) return true;
+
+        // 2. Direct match by option key (e.g. "1", "2", "[1]", "1.", "1️⃣")
+        if (dKey && (
+          clean === dKey ||
+          clean === `[${dKey}]` ||
+          clean.startsWith(`${dKey} `) ||
+          clean.startsWith(`${dKey}.`) ||
+          clean.startsWith(`${dKey}-`) ||
+          clean.includes(`[${dKey}]`) ||
+          clean.includes(`[ ${dKey} ]`)
+        )) return true;
+
+        // 3. Match if user clicked a button containing the name
+        if (clean.includes(dName) || dName.includes(clean)) return true;
+
+        // 4. Match configured keywords
+        return dept.keywords && dept.keywords.some(kw => {
+          const k = kw.toLowerCase().trim();
+          if (!k) return false;
+          const regex = new RegExp(`\\b${k.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\b`, 'i');
+          return regex.test(clean) || clean === k || (k.length > 3 && clean.includes(k));
+        });
+      });
+    };
+
+    // Case B: No active department currently selected -> check if user picks one or needs greeting menu
+    if (!memory.activeDepartmentId) {
+      const matchedDept = findMatchingDepartment(cleanQuery);
+      if (matchedDept) {
+        memory.activeDepartmentId = matchedDept.id;
+        memory.activeRole = matchedDept.role;
+        memory.departmentSelectedAt = new Date().toISOString();
+        saveConversationMemory(config.sessionId, config.chatId || '*', memory);
+
+        const deptMode = matchedDept.responseMode || 'hybrid';
+
+        // If department is in pure 'template' mode OR user just typed option key / short keyword
+        if (
+          deptMode === 'template' ||
+          cleanQuery === matchedDept.optionKey ||
+          cleanQuery === matchedDept.name.toLowerCase() ||
+          (cleanQuery.length < 15 && matchedDept.keywords.some(k => cleanQuery === k.toLowerCase()))
+        ) {
+          let ack = formatDepartmentTemplate(matchedDept, config.businessName, memory.customerName || 'Estimado(a) Cliente', memory.ticketId);
+          if (!isWithin && config.schedule.enabled) {
+            ack = '*(Aviso: Fuera de horario de atención)*\n\n' + ack;
+          }
+          return { text: ack };
+        }
+
+        // Otherwise adjust active config for this request in AI or hybrid mode
+        config = {
+          ...config,
+          role: matchedDept.role,
+          customRoleName: matchedDept.name,
+          customRolePrompt: matchedDept.prompt,
+        };
+      } else {
+        // Initial interaction or unrouted text -> Send initial greeting menu with buttons
+        return formatGreetingMenu();
+      }
+    } else {
+      // Case C: Department already active, check if switching
+      const switchDept = findMatchingDepartment(cleanQuery);
+      if (switchDept && switchDept.id !== memory.activeDepartmentId && (cleanQuery.length < 15 || cleanQuery === switchDept.optionKey)) {
+        memory.activeDepartmentId = switchDept.id;
+        memory.activeRole = switchDept.role;
+        memory.departmentSelectedAt = new Date().toISOString();
+        saveConversationMemory(config.sessionId, config.chatId || '*', memory);
+
+        const deptMode = switchDept.responseMode || 'hybrid';
+        if (deptMode === 'template' || cleanQuery === switchDept.optionKey || cleanQuery.length < 15) {
+          let ack = `🔄 *Transferido a ${switchDept.name}* ${switchDept.icon || '🤝'}\n\n` +
+            formatDepartmentTemplate(switchDept, config.businessName, memory.customerName || 'Estimado(a) Cliente', memory.ticketId);
+          if (!isWithin && config.schedule.enabled) {
+            ack = '*(Aviso: Fuera de horario de atención)*\n\n' + ack;
+          }
+          return { text: ack };
+        }
+      }
+
+      // Keep using active department persona
+      const activeDept = multi.departments.find(d => d.id === memory.activeDepartmentId);
+      if (activeDept) {
+        if (activeDept.responseMode === 'template') {
+          let out = formatDepartmentTemplate(activeDept, config.businessName, memory.customerName || 'Estimado(a) Cliente', memory.ticketId);
+          if (!isWithin && config.schedule.enabled) {
+            out = '*(Aviso: Fuera de horario de atención)*\n\n' + out;
+          }
+          return { text: out };
+        }
+
+        config = {
+          ...config,
+          role: activeDept.role,
+          customRoleName: activeDept.name,
+          customRolePrompt: activeDept.prompt,
+        };
+      }
+    }
   }
 
   const roleDef = AI_ROLES[config.role] || AI_ROLES.support;
   const roleName = config.role === 'custom' && config.customRoleName?.trim() ? config.customRoleName.trim() : roleDef.name;
 
-  // Extract / update persistent conversational memory for this chat
-  const memory = updateMemoryFromDialogue(config.sessionId, config.chatId || '*', messages, config.role);
-
-  // Extract last user message to evaluate template triggers
-  const lastUserMessages = messages.filter(m => !m.fromMe && m.body).slice(-2);
-  const lastQuery = lastUserMessages[lastUserMessages.length - 1]?.body?.trim() || 'Hola';
+  // 0.8. Check Custom External API Endpoints (e.g. Consultar Saldo, Estado ONT, Tickets, Pagos)
+  const matchedEndpoint = findMatchingApiEndpoint(cleanQuery, memory.activeRole || config.role);
+  if (matchedEndpoint) {
+    try {
+      const context = extractContextFromMessage(lastQuery, config.chatId || '', config.businessName);
+      const execResult = await executeApiEndpoint(matchedEndpoint, context);
+      if (execResult && execResult.formattedMessage) {
+        let out = execResult.formattedMessage;
+        if (!isWithin && config.schedule.enabled) {
+          out = '*(Aviso: Fuera de horario de atención)*\n\n' + out;
+        }
+        return {
+          text: out,
+          poll: execResult.poll,
+        };
+      }
+    } catch (epErr) {
+      console.error('[API Endpoint Auto-Reply error]', epErr);
+    }
+  }
 
   // 1. Check Affiliated Template Triggers (Exact keywords, intents or dynamic routing)
   const triggers = config.templateTriggers && config.templateTriggers.length > 0
@@ -931,7 +1471,7 @@ export async function generateAiChatResponse(
       if (!isWithin && config.schedule.enabled) {
         out = '*(Aviso: Fuera de horario de atención)*\n\n' + out;
       }
-      return out;
+      return { text: out };
     }
   }
 
@@ -985,12 +1525,21 @@ Responde en español de forma natural, empática, persuasiva y concisa (ideal pa
   if (llmConfig.provider !== 'offline' && (llmConfig.apiKey || llmConfig.provider === 'ollama')) {
     const llmResponse = await callLlmChatApi(systemInstructions, formattedDialogue, llmConfig);
     if (llmResponse) {
-      return llmResponse;
+      return { text: llmResponse };
     }
   }
 
   // Fallback: Built-in Smart Neural Generator with Memory Tracking
-  return buildSmartRoleResponse(lastQuery, config, isWithin, memory);
+  return { text: buildSmartRoleResponse(lastQuery, config, isWithin, memory) };
+}
+
+/** Standard backwards-compatible wrapper returning text */
+export async function generateAiChatResponse(
+  messages: Array<{ body: string; fromMe?: boolean; type?: string }>,
+  config: ChatAiConfig,
+): Promise<string> {
+  const res = await generateAiChatResponseDetailed(messages, config);
+  return res.text;
 }
 
 /** Built-in smart contextual response generator by role, memory & knowledge sources */

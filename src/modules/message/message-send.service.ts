@@ -745,7 +745,20 @@ export class MessageSendService {
   private toClientFacingError(error: unknown): unknown {
     if (error instanceof SsrfBlockedError) {
       this.logger.warn(`Outbound media fetch blocked by SSRF guard: ${error.message}`);
-      return new BadRequestException(SSRF_BLOCKED_CLIENT_MESSAGE);
+      return new BadRequestException(`No se pudo descargar el archivo multimedia: la dirección o IP privada está bloqueada por seguridad (SSRF) o es inaccesible desde el servidor.`);
+    }
+    if (error instanceof Error) {
+      if (
+        error.message.includes('Media fetch failed') ||
+        error.message.includes('fetch failed') ||
+        error.message.includes('ENOTFOUND') ||
+        error.message.includes('ECONNREFUSED') ||
+        error.message.includes('ETIMEDOUT') ||
+        error.message.includes('certificate')
+      ) {
+        this.logger.warn(`Outbound media fetch failed: ${error.message}`);
+        return new BadRequestException(`No se pudo descargar el medio desde la URL especificada (${error.message}). Asegúrate de que la URL sea pública o usa el botón 'Examinar' para subir el archivo directamente.`);
+      }
     }
     return error;
   }

@@ -1,6 +1,17 @@
-import sharp from 'sharp';
 import type * as BaileysLib from '@whiskeysockets/baileys';
 import type { AnyMessageContent, MiscMessageGenerationOptions, WAMessage, WASocket } from '@whiskeysockets/baileys';
+
+let sharpLib: any = null;
+function getSharp() {
+  if (sharpLib === null) {
+    try {
+      sharpLib = require('sharp');
+    } catch {
+      sharpLib = false;
+    }
+  }
+  return sharpLib;
+}
 import { generateSafeLinkPreview } from './safe-link-preview';
 import {
   CallLinkType,
@@ -51,6 +62,8 @@ export interface BaileysMessagingHost {
   getStoredMessage(messageId: string): Promise<WAMessage | null> | undefined;
   /** Remember a lid<->phone pair the socket resolved, so later reads do not have to ask again. */
   recordLidMapping(lid: string, pn: string): void;
+  /** Record an outgoing message to the session store for preview and tracking */
+  recordMessage(msg: WAMessage): void;
   /** The currently-registered onMessageCreate callback, if any (assigned at initialize()). */
   getOnMessageCreate(): EngineEventCallbacks['onMessageCreate'];
   /** Map a WAMessage to its neutral shape (the adapter's inbound mapper). */
@@ -98,8 +111,14 @@ async function toWebpSticker(data: Buffer, mimetype: string): Promise<Buffer> {
       `A sticker must be a WebP image, or an image this gateway can convert to one. Received '${mimetype}'.`,
     );
   }
+  const sharpInstance = getSharp();
+  if (!sharpInstance) {
+    throw new BadRequestException(
+      `El procesamiento de stickers con Sharp no está disponible en este entorno de servidor. Envíe la imagen directamente en formato WebP.`,
+    );
+  }
   try {
-    return await sharp(data, { animated: true })
+    return await sharpInstance(data, { animated: true })
       .resize(512, 512, { fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 } })
       .webp()
       .toBuffer();
@@ -631,6 +650,9 @@ export class BaileysMessaging {
    * a mapping failure must never fail the send that already succeeded.
    */
   private async emitOwnSendEcho(sent: WAMessage): Promise<void> {
+    if (sent.key?.remoteJid && sent.message) {
+      this.host.recordMessage(sent);
+    }
     const onMessageCreate = this.host.getOnMessageCreate();
     if (!onMessageCreate) return;
     try {

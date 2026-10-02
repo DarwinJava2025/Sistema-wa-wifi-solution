@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Search, Filter, Loader2, FileText, AlertCircle } from 'lucide-react';
+import { Download, Search, Filter, Loader2, FileText, AlertCircle, FileSpreadsheet } from 'lucide-react';
 import type { AuditLog } from '../services/api';
 import { auditApi } from '../services/api';
 import { useDocumentTitle } from '../hooks/useDocumentTitle';
@@ -10,6 +10,7 @@ import { CustomSelect } from '../components/CustomSelect';
 import { pageWindow } from '../utils/pageWindow';
 import { fetchAllPages } from '../utils/fetchAllPages';
 import { escapeCsvCell } from '../utils/csv';
+import { downloadLogsExcel } from '../utils/excelService';
 import './Logs.css';
 
 export function Logs() {
@@ -19,6 +20,7 @@ export function Logs() {
   const [severityFilter, setSeverityFilter] = useState('all');
   const [page, setPage] = useState(1);
   const [exporting, setExporting] = useState(false);
+  const [exportingExcel, setExportingExcel] = useState(false);
   const limit = 20;
 
   const severityParam = severityFilter !== 'all' ? severityFilter : undefined;
@@ -86,9 +88,31 @@ export function Logs() {
     URL.revokeObjectURL(url);
   };
 
-  // Export the WHOLE audit history (honouring the active severity filter + search), not just the
-  // current page — paginate through the API up to a safety cap so a huge table can't OOM the tab. On
-  // a fetch error, fall back to exporting the rows already on screen.
+  // Export as Excel (.xlsx)
+  const handleExportExcel = async () => {
+    if (exportingExcel) return;
+    setExportingExcel(true);
+    try {
+      const all = await fetchAllPages<AuditLog>((limit, offset) =>
+        auditApi.list({ severity: severityParam, limit, offset }),
+      );
+      const q = searchQuery.toLowerCase();
+      const rows = q
+        ? all.filter(l => l.action.toLowerCase().includes(q) || (l.errorMessage || '').toLowerCase().includes(q))
+        : all;
+      if (rows.length > 0) {
+        downloadLogsExcel(rows, `auditoria-logs-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      }
+    } catch {
+      if (filteredLogs.length > 0) {
+        downloadLogsExcel(filteredLogs, `auditoria-logs-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      }
+    } finally {
+      setExportingExcel(false);
+    }
+  };
+
+  // Export the WHOLE audit history as CSV
   const handleExportCsv = async () => {
     if (exporting) return;
     setExporting(true);
@@ -125,10 +149,26 @@ export function Logs() {
         title={t('logs.title')}
         subtitle={t('logs.subtitle')}
         actions={
-          <button className="btn-secondary" onClick={() => void handleExportCsv()} disabled={exporting || total === 0}>
-            {exporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
-            {t('logs.exportCsv')}
-          </button>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              className="btn-secondary"
+              onClick={() => void handleExportExcel()}
+              disabled={exportingExcel || total === 0}
+              title="Exportar registro completo a hoja de cálculo Excel (.xlsx)"
+            >
+              {exportingExcel ? <Loader2 size={18} className="animate-spin" /> : <FileSpreadsheet size={18} color="#10b981" />}
+              Exportar Excel (.xlsx)
+            </button>
+            <button
+              className="btn-secondary"
+              onClick={() => void handleExportCsv()}
+              disabled={exporting || total === 0}
+              title="Exportar a CSV"
+            >
+              {exporting ? <Loader2 size={18} className="animate-spin" /> : <Download size={18} />}
+              {t('logs.exportCsv')}
+            </button>
+          </div>
         }
       />
 

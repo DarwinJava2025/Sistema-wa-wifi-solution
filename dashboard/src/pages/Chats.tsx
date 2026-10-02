@@ -49,8 +49,7 @@ import ChatComposer, { type StagedAttachment } from '../components/chats/ChatCom
 import StatusMedia from '../components/chats/StatusMedia';
 import StatusComposeModal from '../components/chats/StatusComposeModal';
 import AiAssistantModal from '../components/chats/AiAssistantModal';
-import NewChatModal from '../components/chats/NewChatModal';
-import { getEffectiveAiConfig, AI_ROLES, generateAiChatResponse, isWithinBusinessHours } from '../services/aiAssistant';
+import { getEffectiveAiConfig, AI_ROLES, generateAiChatResponseDetailed, isWithinBusinessHours } from '../services/aiAssistant';
 import { ArrowLeft, Loader2, Megaphone, CircleDashed, AlertCircle, MessageSquare, Bot } from 'lucide-react';
 import './Chats.css';
 
@@ -174,9 +173,8 @@ export function Chats() {
   // itself — state, contacts query, submit — is components/chats/StatusComposeModal.
   const [composeOpen, setComposeOpen] = useState<boolean>(false);
 
-  // --- AI Assistant & New Chat modals ---
+  // --- AI Assistant modal ---
   const [showAiModal, setShowAiModal] = useState<boolean>(false);
-  const [showNewChatModal, setShowNewChatModal] = useState<boolean>(false);
   const [aiConfigCounter, setAiConfigCounter] = useState<number>(0);
 
   const {
@@ -270,9 +268,10 @@ export function Chats() {
         setLoadingSessions(true);
         const list = await sessionApi.list();
         const readySessions = list.filter(s => s.status === 'ready');
-        setSessions(readySessions);
-        if (readySessions.length > 0) {
-          setSelectedSessionId(readySessions[0].id);
+        const availableSessions = readySessions.length > 0 ? readySessions : list;
+        setSessions(availableSessions);
+        if (availableSessions.length > 0) {
+          setSelectedSessionId(prev => (prev && availableSessions.some(s => s.id === prev) ? prev : availableSessions[0].id));
         }
       } catch (err) {
         showErrorToast(t('chats.errors.loadSessions'), err instanceof Error ? err.message : undefined);
@@ -290,10 +289,13 @@ export function Chats() {
       try {
         setLoadingChats(true);
         const data = await sessionApi.getChats(sessionId);
-        const sorted = [...data].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+        const sorted = [...(data || [])].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
         setChats(sorted);
-      } catch (err) {
-        showErrorToast(t('chats.errors.loadChats'), err instanceof Error ? err.message : undefined);
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        if (!errorMsg.includes('not ready') && !errorMsg.includes('not connected')) {
+          showErrorToast(t('chats.errors.loadChats'), errorMsg);
+        }
         setChats([]);
       } finally {
         setLoadingChats(false);
@@ -399,9 +401,22 @@ export function Chats() {
                 return;
               }
               const currentHistory = queryClient.getQueryData<ChatMessageView[]>(messagesQueryKey(event.sessionId, newMsg.chatId)) || [mappedMessage];
-              const aiReply = await generateAiChatResponse(currentHistory, aiConf);
-              if (aiReply && aiReply.trim()) {
-                await messageApi.sendText(event.sessionId, newMsg.chatId, aiReply.trim());
+              const detailedReply = await generateAiChatResponseDetailed(currentHistory, aiConf);
+              if (detailedReply.text && detailedReply.text.trim()) {
+                await messageApi.sendText(event.sessionId, newMsg.chatId, detailedReply.text.trim());
+              }
+              // If reply includes interactive WhatsApp buttons (poll), send it natively so user sees clickable buttons
+              if (detailedReply.poll && detailedReply.poll.options && detailedReply.poll.options.length >= 2) {
+                try {
+                  await messageApi.sendPoll(event.sessionId, {
+                    chatId: newMsg.chatId,
+                    name: detailedReply.poll.name,
+                    options: detailedReply.poll.options,
+                    allowMultipleAnswers: false,
+                  });
+                } catch (pollErr) {
+                  console.warn('[AI Assistant Poll Buttons dispatch warning]', pollErr);
+                }
               }
             } catch (err) {
               console.error('[AI Assistant Auto-Pilot error]', err);
@@ -913,7 +928,6 @@ export function Chats() {
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
             onComposeStatus={() => setComposeOpen(true)}
-            onNewChat={() => setShowNewChatModal(true)}
             formatChatTime={formatChatTime}
             chatsTab={{
               loading: loadingChats,
@@ -1165,32 +1179,6 @@ export function Chats() {
           onClose={() => {
             setShowAiModal(false);
             setAiConfigCounter(c => c + 1);
-          }}
-        />
-      )}
-
-      {showNewChatModal && selectedSessionId && (
-        <NewChatModal
-          sessionId={selectedSessionId}
-          onClose={() => setShowNewChatModal(false)}
-          onChatCreated={newChatId => {
-            setShowNewChatModal(false);
-            void loadChats(selectedSessionId).then(() => {
-              const found = chats.find(c => c.id === newChatId);
-              if (found) {
-                setActiveChat(found);
-              } else {
-                setActiveChat({
-                  id: newChatId,
-                  name: newChatId.split('@')[0],
-                  kind: 'individual',
-                  timestamp: Math.floor(Date.now() / 1000),
-                  unreadCount: 0,
-                  isGroup: false,
-                });
-              }
-              setAiConfigCounter(c => c + 1);
-            });
           }}
         />
       )}

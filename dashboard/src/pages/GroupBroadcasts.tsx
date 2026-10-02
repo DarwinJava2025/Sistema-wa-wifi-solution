@@ -7,7 +7,6 @@ import {
   Copy,
   Check,
   Trash2,
-  Upload,
   Download,
   Terminal,
   Clock,
@@ -15,9 +14,15 @@ import {
   XCircle,
   Loader2,
   X,
-  Radio,
   UserCheck,
   Building2,
+  Bot,
+  Search,
+  CheckSquare,
+  Square,
+  CheckCheck,
+  Zap,
+  FileSpreadsheet,
 } from 'lucide-react';
 import { sessionApi, type Session } from '../services/api';
 import {
@@ -33,7 +38,12 @@ import {
   buildBroadcastCurl,
   sendGroupMessage,
 } from '../services/groupBroadcastService';
-import { parseContactsFile, generateCsvTemplate } from '../services/scheduledMessagesService';
+import { generateCsvTemplate } from '../services/scheduledMessagesService';
+import {
+  downloadGroupBroadcastsExcelTemplate,
+  parseContactsFileUnified,
+} from '../utils/excelService';
+import { getEffectiveAiConfig, AI_ROLES } from '../services/aiAssistant';
 import './GroupBroadcasts.css';
 
 const QUICK_GROUP_TEMPLATES: Record<string, string> = {
@@ -45,11 +55,16 @@ const QUICK_GROUP_TEMPLATES: Record<string, string> = {
     '💳 **Aviso de Facturación - {empresa}:**\n\nEstimado(a) {nombre}, le recordamos que su fecha de corte se aproxima. Para evitar suspensión del servicio de internet, por favor reporte su comprobante de pago por este medio.',
   grp_vip:
     '⭐ **Notificación para Clientes Corporativos - {empresa}:**\n\nEstimado(a) {nombre}, su enlace dedicado cuenta con monitoreo activo 24/7. Le informamos sobre mejoras de ancho de banda aplicadas a su troncal de red.',
+  bot_announcement:
+    '🤖 **Notificación de Sistema para Bots / Líneas WhatsApp - {empresa}:**\n\nEstimado operador del bot {nombre}, se ha actualizado la directiva de atención y la base de conocimiento del sistema. Verifique su estado de conexión.',
 };
 
 const ICON_OPTIONS = ['👥', '🛠️', '🔥', '💳', '⭐', '🌐', '📢', '💼', '🚀'];
 
 export function GroupBroadcasts() {
+  // Target Mode: 'contacts' = Groups of Clients, 'bots' = Created Bots/Sessions
+  const [targetMode, setTargetMode] = useState<'contacts' | 'bots'>('contacts');
+
   const [groups, setGroups] = useState<ContactGroup[]>([]);
   const [selectedGroupId, setSelectedGroupId] = useState<string>('grp_support');
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -58,6 +73,13 @@ export function GroupBroadcasts() {
   const [businessName, setBusinessName] = useState<string>('WiFi Solution Pro');
   const [intervalSeconds, setIntervalSeconds] = useState<number>(4);
   const [copiedCurl, setCopiedCurl] = useState<boolean>(false);
+
+  // Bot Filtering State
+  const [botSearchTerm, setBotSearchTerm] = useState<string>('');
+  const [botStatusFilter, setBotStatusFilter] = useState<'all' | 'connected' | 'disconnected'>('all');
+  const [selectedTargetBotNames, setSelectedTargetBotNames] = useState<string[]>([]);
+  const [multiSenderEnabled, setMultiSenderEnabled] = useState<boolean>(false);
+  const [selectedSenderBotNames, setSelectedSenderBotNames] = useState<string[]>([]);
 
   // Execution & Progress State
   const [isBroadcasting, setIsBroadcasting] = useState<boolean>(false);
@@ -91,9 +113,13 @@ export function GroupBroadcasts() {
     sessionApi
       .list()
       .then(list => {
-        setSessions(list || []);
-        if (list && list.length > 0) {
-          setSelectedSessionId(list[0].name);
+        const sessList = list || [];
+        setSessions(sessList);
+        if (sessList.length > 0) {
+          const firstConnected = sessList.find(s => s.status === 'ready') || sessList[0];
+          setSelectedSessionId(firstConnected.name);
+          setSelectedSenderBotNames([firstConnected.name]);
+          setSelectedTargetBotNames(sessList.map(s => s.name));
         }
       })
       .catch(() => {});
@@ -105,6 +131,21 @@ export function GroupBroadcasts() {
   const totalSent = history.reduce((sum, h) => sum + h.sentCount, 0);
   const totalFailed = history.reduce((sum, h) => sum + h.failedCount, 0);
 
+  // Filter bots list according to search term and status
+  const filteredSessions = sessions.filter(s => {
+    const isConn = s.status === 'ready';
+    if (botStatusFilter === 'connected' && !isConn) return false;
+    if (botStatusFilter === 'disconnected' && isConn) return false;
+
+    if (botSearchTerm.trim()) {
+      const term = botSearchTerm.toLowerCase().trim();
+      const matchName = s.name.toLowerCase().includes(term);
+      const matchPhone = s.phone ? s.phone.includes(term) : false;
+      return matchName || matchPhone;
+    }
+    return true;
+  });
+
   const handleSelectGroup = (groupId: string) => {
     setSelectedGroupId(groupId);
     if (QUICK_GROUP_TEMPLATES[groupId]) {
@@ -112,11 +153,39 @@ export function GroupBroadcasts() {
     }
   };
 
+  const handleToggleTargetBot = (botName: string) => {
+    setSelectedTargetBotNames(prev =>
+      prev.includes(botName) ? prev.filter(n => n !== botName) : [...prev, botName],
+    );
+  };
+
+  const handleSelectAllTargetBots = () => {
+    if (selectedTargetBotNames.length === filteredSessions.length) {
+      setSelectedTargetBotNames([]);
+    } else {
+      setSelectedTargetBotNames(filteredSessions.map(s => s.name));
+    }
+  };
+
+  const handleToggleSenderBot = (botName: string) => {
+    setSelectedSenderBotNames(prev =>
+      prev.includes(botName) ? (prev.length > 1 ? prev.filter(n => n !== botName) : prev) : [...prev, botName],
+    );
+  };
+
   const handleCopyCurl = () => {
-    const sampleContact = selectedGroup?.contacts?.[0];
+    let targetPhone = '584121234567';
+    if (targetMode === 'contacts') {
+      const sampleContact = selectedGroup?.contacts?.[0];
+      targetPhone = sampleContact?.phone || '584121234567';
+    } else {
+      const sampleBot = sessions.find(s => selectedTargetBotNames.includes(s.name)) || sessions[0];
+      targetPhone = sampleBot?.phone ? sampleBot.phone.replace(/[^0-9]/g, '') : '584129998877';
+    }
+
     const curl = buildBroadcastCurl(
       selectedSessionId,
-      sampleContact?.phone || '584121234567',
+      targetPhone,
       message || 'Hola {nombre}',
     );
     navigator.clipboard.writeText(curl);
@@ -124,7 +193,11 @@ export function GroupBroadcasts() {
     setTimeout(() => setCopiedCurl(false), 2000);
   };
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadExcelTemplate = () => {
+    downloadGroupBroadcastsExcelTemplate();
+  };
+
+  const handleDownloadCsvTemplate = () => {
     const csvContent = 'data:text/csv;charset=utf-8,' + encodeURIComponent(generateCsvTemplate());
     const downloadAnchor = document.createElement('a');
     downloadAnchor.setAttribute('href', csvContent);
@@ -134,20 +207,18 @@ export function GroupBroadcasts() {
     downloadAnchor.remove();
   };
 
-  const handleImportCsvToGroup = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleImportFileToGroup = async (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedGroup) return;
 
-    const reader = new FileReader();
-    reader.onload = ev => {
-      const text = (ev.target?.result as string) || '';
-      const parsed = parseContactsFile(text);
-      if (parsed.length > 0) {
-        const newContacts: GroupContact[] = parsed.map(p => ({
+    try {
+      const res = await parseContactsFileUnified(file);
+      if (res.contacts.length > 0) {
+        const newContacts: GroupContact[] = res.contacts.map(p => ({
           id: p.id,
           name: p.name,
           phone: p.phone,
-          note: p.date || '',
+          note: p.date || (p.customData ? Object.values(p.customData).join(' | ') : ''),
         }));
 
         const updatedGroup = {
@@ -158,8 +229,9 @@ export function GroupBroadcasts() {
         saveGroup(updatedGroup);
         setGroups(getContactGroups());
       }
-    };
-    reader.readAsText(file);
+    } catch (err) {
+      console.error('Error importing contacts to group:', err);
+    }
   };
 
   const handleAddSingleContact = () => {
@@ -228,48 +300,85 @@ export function GroupBroadcasts() {
     }
   };
 
+  // Build target recipients list according to active mode
+  const getRecipients = (): Array<{ id: string; name: string; phone: string; note?: string }> => {
+    if (targetMode === 'contacts') {
+      return (selectedGroup?.contacts || []).map(c => ({
+        id: c.id,
+        name: c.name,
+        phone: c.phone,
+        note: c.note,
+      }));
+    } else {
+      const targetBots = sessions.filter(s => selectedTargetBotNames.includes(s.name));
+      return targetBots.map(b => ({
+        id: b.name,
+        name: b.name,
+        phone: b.phone ? b.phone.replace(/[^0-9]/g, '') : b.name,
+        note: `Bot: ${b.status}`,
+      }));
+    }
+  };
+
+  const recipients = getRecipients();
+
   const handleSendBroadcast = async () => {
-    if (!selectedSessionId || !selectedGroup || selectedGroup.contacts.length === 0 || !message.trim()) {
+    if (!selectedSessionId || recipients.length === 0 || !message.trim()) {
       return;
     }
 
+    const senders = multiSenderEnabled && selectedSenderBotNames.length > 0
+      ? selectedSenderBotNames
+      : [selectedSessionId];
+
+    const targetDesc = targetMode === 'contacts'
+      ? `al grupo "${selectedGroup?.name}" (${recipients.length} clientes)`
+      : `a ${recipients.length} Bots / Sesiones seleccionados`;
+
+    const sendersDesc = senders.length > 1
+      ? `distribuido entre ${senders.length} bots emisores (Round-Robin)`
+      : `usando la sesión "${selectedSessionId}"`;
+
     const confirmSend = window.confirm(
-      `¿Deseas enviar la difusión a ${selectedGroup.contacts.length} contactos del grupo "${selectedGroup.name}" usando la sesión "${selectedSessionId}"?`,
+      `¿Deseas iniciar el envío de difusión ${targetDesc} ${sendersDesc}?`,
     );
     if (!confirmSend) return;
 
     setIsBroadcasting(true);
-    setBroadcastProgress({ current: 0, total: selectedGroup.contacts.length });
+    setBroadcastProgress({ current: 0, total: recipients.length });
     setLiveLogs([]);
 
     const currentLogs: BroadcastLogItem[] = [];
     let sentCount = 0;
     let failedCount = 0;
 
-    for (let i = 0; i < selectedGroup.contacts.length; i++) {
-      const contact = selectedGroup.contacts[i];
-      let personalizedText = message;
-      personalizedText = personalizedText.replace(/\{nombre\}/gi, contact.name);
-      personalizedText = personalizedText.replace(/\{empresa\}/gi, businessName);
-      personalizedText = personalizedText.replace(/\{grupo\}/gi, selectedGroup.name);
-      personalizedText = personalizedText.replace(/\{telefono\}/gi, contact.phone);
+    for (let i = 0; i < recipients.length; i++) {
+      const recipient = recipients[i];
+      // Resolve sender in round-robin if multi-sender active
+      const currentSender = senders[i % senders.length];
 
-      const res = await sendGroupMessage(selectedSessionId, contact.phone, personalizedText);
+      let personalizedText = message;
+      personalizedText = personalizedText.replace(/\{nombre\}/gi, recipient.name);
+      personalizedText = personalizedText.replace(/\{empresa\}/gi, businessName);
+      personalizedText = personalizedText.replace(/\{grupo\}/gi, targetMode === 'contacts' ? (selectedGroup?.name || 'Grupo') : 'Bots');
+      personalizedText = personalizedText.replace(/\{telefono\}/gi, recipient.phone);
+
+      const res = await sendGroupMessage(currentSender, recipient.phone, personalizedText);
       const timeStr = new Date().toLocaleTimeString();
 
       if (res.success) {
         sentCount++;
         currentLogs.unshift({
-          phone: contact.phone,
-          name: contact.name,
+          phone: recipient.phone,
+          name: `${recipient.name} [via ${currentSender}]`,
           status: 'success',
           time: timeStr,
         });
       } else {
         failedCount++;
         currentLogs.unshift({
-          phone: contact.phone,
-          name: contact.name,
+          phone: recipient.phone,
+          name: `${recipient.name} [via ${currentSender}]`,
           status: 'failed',
           error: res.error,
           time: timeStr,
@@ -277,10 +386,10 @@ export function GroupBroadcasts() {
       }
 
       setLiveLogs([...currentLogs]);
-      setBroadcastProgress({ current: i + 1, total: selectedGroup.contacts.length });
+      setBroadcastProgress({ current: i + 1, total: recipients.length });
 
       // Anti-ban delay
-      if (i < selectedGroup.contacts.length - 1) {
+      if (i < recipients.length - 1) {
         await new Promise(r => setTimeout(r, intervalSeconds * 1000));
       }
     }
@@ -288,11 +397,11 @@ export function GroupBroadcasts() {
     // Record in history
     const record: BroadcastRecord = {
       id: 'bcast_' + Date.now(),
-      groupId: selectedGroup.id,
-      groupName: selectedGroup.name,
-      sessionId: selectedSessionId,
+      groupId: targetMode === 'contacts' ? (selectedGroup?.id || 'grp_custom') : 'grp_bots',
+      groupName: targetMode === 'contacts' ? (selectedGroup?.name || 'Grupo') : '🤖 Difusión a Bots Creados',
+      sessionId: senders.join(', '),
       message,
-      totalContacts: selectedGroup.contacts.length,
+      totalContacts: recipients.length,
       sentCount,
       failedCount,
       createdAt: new Date().toISOString(),
@@ -304,22 +413,22 @@ export function GroupBroadcasts() {
     setIsBroadcasting(false);
   };
 
-  const sampleContact = selectedGroup?.contacts?.[0] || {
+  const sampleRecipient = recipients[0] || {
     id: 'sample',
-    name: 'Carlos Mendoza',
+    name: targetMode === 'contacts' ? 'Carlos Mendoza' : 'bot-soporte-01',
     phone: '584121112233',
-    note: 'Ticket #ST-4821',
+    note: 'Destinatario Demo',
   };
 
   const sampleRenderedMsg = message
-    .replace(/\{nombre\}/gi, sampleContact.name)
+    .replace(/\{nombre\}/gi, sampleRecipient.name)
     .replace(/\{empresa\}/gi, businessName)
-    .replace(/\{grupo\}/gi, selectedGroup?.name || 'Grupo')
-    .replace(/\{telefono\}/gi, sampleContact.phone);
+    .replace(/\{grupo\}/gi, targetMode === 'contacts' ? (selectedGroup?.name || 'Grupo') : 'Bots')
+    .replace(/\{telefono\}/gi, sampleRecipient.phone);
 
   const liveCurlCommand = buildBroadcastCurl(
     selectedSessionId,
-    sampleContact.phone,
+    sampleRecipient.phone,
     message || 'Hola {nombre}',
   );
 
@@ -330,32 +439,79 @@ export function GroupBroadcasts() {
         <div>
           <h1>Difusión de Mensajes por Grupos & Chatbots</h1>
           <p className="page-subtitle">
-            Envía mensajes masivos segmentados por grupos de clientes (Soporte, Ventas, Cobranzas o VIP) y visualiza el comando cURL en tiempo real.
+            Envía mensajes masivos segmentados a grupos de clientes o directamente a los Bots y Sesiones creados con filtros avanzados y soporte multi-emisor.
           </p>
         </div>
         <div className="header-actions">
-          <button type="button" className="btn-secondary" onClick={handleDownloadTemplate}>
-            <Download size={16} /> Plantilla CSV
-          </button>
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setIsCreateGroupModalOpen(true)}
-          >
-            <Plus size={16} /> Crear Nuevo Grupo
-          </button>
+          {targetMode === 'contacts' && (
+            <>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleDownloadExcelTemplate}
+                title="Descargar plantilla formateada en Excel (.xlsx) con columnas contextuales"
+              >
+                <FileSpreadsheet size={16} /> Descargar Plantilla Excel (.xlsx)
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={handleDownloadCsvTemplate}
+                title="Descargar plantilla en formato CSV"
+              >
+                <Download size={16} /> Plantilla CSV
+              </button>
+            </>
+          )}
+          {targetMode === 'contacts' && (
+            <button
+              type="button"
+              className="btn-primary"
+              onClick={() => setIsCreateGroupModalOpen(true)}
+            >
+              <Plus size={16} /> Crear Nuevo Grupo
+            </button>
+          )}
         </div>
+      </div>
+
+      {/* Target Destination Switch */}
+      <div className="target-mode-bar">
+        <button
+          className={`target-mode-tab ${targetMode === 'contacts' ? 'active' : ''}`}
+          onClick={() => {
+            setTargetMode('contacts');
+            if (selectedGroup && QUICK_GROUP_TEMPLATES[selectedGroup.id]) {
+              setMessage(QUICK_GROUP_TEMPLATES[selectedGroup.id]);
+            }
+          }}
+        >
+          <Users size={18} /> Difusión a Grupos de Contactos / Clientes
+        </button>
+        <button
+          className={`target-mode-tab ${targetMode === 'bots' ? 'active' : ''}`}
+          onClick={() => {
+            setTargetMode('bots');
+            setMessage(QUICK_GROUP_TEMPLATES.bot_announcement);
+          }}
+        >
+          <Bot size={18} /> Difusión a Bots / Sesiones Creadas ({sessions.length})
+        </button>
       </div>
 
       {/* Stats Cards */}
       <div className="stats-grid-unified">
         <div className="stat-card">
           <div className="stat-icon-wrapper blue">
-            <Users size={22} />
+            {targetMode === 'contacts' ? <Users size={22} /> : <Bot size={22} />}
           </div>
           <div className="stat-content">
-            <span className="stat-value">{groups.length}</span>
-            <span className="stat-label">Grupos Segmentados</span>
+            <span className="stat-value">
+              {targetMode === 'contacts' ? groups.length : sessions.length}
+            </span>
+            <span className="stat-label">
+              {targetMode === 'contacts' ? 'Grupos Segmentados' : 'Bots Registrados'}
+            </span>
           </div>
         </div>
 
@@ -364,8 +520,12 @@ export function GroupBroadcasts() {
             <UserCheck size={22} />
           </div>
           <div className="stat-content">
-            <span className="stat-value">{totalContacts}</span>
-            <span className="stat-label">Contactos en Total</span>
+            <span className="stat-value">
+              {targetMode === 'contacts' ? totalContacts : selectedTargetBotNames.length}
+            </span>
+            <span className="stat-label">
+              {targetMode === 'contacts' ? 'Contactos en Total' : 'Bots Destinatarios'}
+            </span>
           </div>
         </div>
 
@@ -410,124 +570,292 @@ export function GroupBroadcasts() {
             />
           </div>
           <p className="execution-counter">
-            Enviando {broadcastProgress.current} de {broadcastProgress.total} contactos • Intervalo anti-ban: {intervalSeconds}s
+            Enviando {broadcastProgress.current} de {broadcastProgress.total} destinatarios • Intervalo anti-ban: {intervalSeconds}s
           </p>
         </div>
       )}
 
-      {/* Main Grid: Left Groups / Right Composer & cURL */}
+      {/* Main Grid */}
       <div className="broadcast-main-grid">
-        {/* Left Column: Groups List */}
+        {/* Left Column: Groups or Bots List */}
         <div className="groups-sidebar-panel">
-          <div className="groups-sidebar-header">
-            <h3>
-              <Users size={18} /> Grupos de Chatbots
-            </h3>
-            <span className="groups-count-badge">{groups.length} grupos</span>
-          </div>
+          {targetMode === 'contacts' ? (
+            <>
+              <div className="groups-sidebar-header">
+                <h3>
+                  <Users size={18} /> Grupos de Clientes
+                </h3>
+                <span className="groups-count-badge">{groups.length} grupos</span>
+              </div>
 
-          <div className="groups-list">
-            {groups.map(g => {
-              const isSelected = g.id === selectedGroupId;
-              return (
-                <div
-                  key={g.id}
-                  className={`group-item-card ${isSelected ? 'selected' : ''}`}
-                  onClick={() => handleSelectGroup(g.id)}
-                >
-                  <div className="group-item-header">
-                    <span className="group-item-name">{g.name}</span>
-                    <span className="group-members-badge">
-                      <Users size={12} /> {g.contacts.length}
-                    </span>
-                  </div>
-                  <p className="group-item-desc">{g.description}</p>
+              <div className="groups-list">
+                {groups.map(g => {
+                  const isSelected = g.id === selectedGroupId;
+                  return (
+                    <div
+                      key={g.id}
+                      className={`group-item-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => handleSelectGroup(g.id)}
+                    >
+                      <div className="group-item-header">
+                        <span className="group-item-name">{g.name}</span>
+                        <span className="group-members-badge">
+                          <Users size={12} /> {g.contacts.length}
+                        </span>
+                      </div>
+                      <p className="group-item-desc">{g.description}</p>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <button
+                type="button"
+                className="btn-secondary btn-full-width"
+                onClick={() => setIsCreateGroupModalOpen(true)}
+              >
+                <Plus size={16} /> Crear Grupo Adicional
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="groups-sidebar-header">
+                <h3>
+                  <Bot size={18} /> Bots / Sesiones Destinatarias
+                </h3>
+                <span className="groups-count-badge">
+                  {selectedTargetBotNames.length} / {filteredSessions.length} sel.
+                </span>
+              </div>
+
+              {/* Bot Filters in Sidebar */}
+              <div className="bot-filter-controls">
+                <div style={{ position: 'relative' }}>
+                  <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#64748b' }} />
+                  <input
+                    type="text"
+                    className="bot-search-input"
+                    placeholder="Filtrar bots por nombre..."
+                    value={botSearchTerm}
+                    onChange={e => setBotSearchTerm(e.target.value)}
+                  />
                 </div>
-              );
-            })}
-          </div>
 
-          <button
-            type="button"
-            className="btn-secondary btn-full-width"
-            onClick={() => setIsCreateGroupModalOpen(true)}
-          >
-            <Plus size={16} /> Crear Grupo Adicional
-          </button>
+                <div className="bot-filter-pills">
+                  <button
+                    className={`bot-filter-pill ${botStatusFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setBotStatusFilter('all')}
+                  >
+                    Todos ({sessions.length})
+                  </button>
+                  <button
+                    className={`bot-filter-pill ${botStatusFilter === 'connected' ? 'active' : ''}`}
+                    onClick={() => setBotStatusFilter('connected')}
+                  >
+                    🟢 Conectados
+                  </button>
+                  <button
+                    className={`bot-filter-pill ${botStatusFilter === 'disconnected' ? 'active' : ''}`}
+                    onClick={() => setBotStatusFilter('disconnected')}
+                  >
+                    ⚪ Offline
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  style={{ fontSize: '0.8rem', padding: '5px 10px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  onClick={handleSelectAllTargetBots}
+                >
+                  {selectedTargetBotNames.length === filteredSessions.length ? (
+                    <>
+                      <Square size={14} /> Deseleccionar Todos
+                    </>
+                  ) : (
+                    <>
+                      <CheckSquare size={14} /> Seleccionar Todos
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="groups-list">
+                {filteredSessions.map(bot => {
+                  const isSelected = selectedTargetBotNames.includes(bot.name);
+                  const isOnline = bot.status === 'ready';
+                  const botAi = getEffectiveAiConfig(bot.name);
+                  const roleName = botAi?.role ? (AI_ROLES[botAi.role]?.name || botAi.role) : 'General';
+
+                  return (
+                    <div
+                      key={bot.name}
+                      className={`group-item-card ${isSelected ? 'selected' : ''}`}
+                      onClick={() => handleToggleTargetBot(bot.name)}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <div className="group-item-header">
+                        <span className="group-item-name" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {isSelected ? <CheckSquare size={15} color="#10b981" /> : <Square size={15} color="#64748b" />}
+                          {bot.name}
+                        </span>
+                        <span className={`bot-status-indicator ${isOnline ? 'connected' : 'disconnected'}`}>
+                          {isOnline ? '🟢 Online' : '⚪ Offline'}
+                        </span>
+                      </div>
+                      <p className="group-item-desc" style={{ margin: '4px 0 0 0' }}>
+                        {bot.phone ? `📱 ${bot.phone}` : 'Sin número vinculado'} • Rol: <strong>{roleName}</strong>
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Center / Right Column: Broadcast Composer & Live cURL */}
+        {/* Center / Right Column: Composer & Live Preview */}
         <div className="composer-and-curl-panel">
-          {/* Active Group Header & Contacts Bar */}
+          {/* Active Target Header */}
           <div className="active-group-header-card">
             <div className="active-group-info">
               <div className="active-group-icon">
-                <Megaphone size={22} />
+                {targetMode === 'contacts' ? <Megaphone size={22} /> : <Bot size={22} />}
               </div>
               <div>
-                <h2>{selectedGroup?.name || 'Selecciona un Grupo'}</h2>
+                <h2>
+                  {targetMode === 'contacts'
+                    ? (selectedGroup?.name || 'Selecciona un Grupo')
+                    : `🤖 Difusión Masiva a Bots Creados (${selectedTargetBotNames.length} seleccionados)`}
+                </h2>
                 <span className="active-group-sub">
-                  {selectedGroup?.contacts.length || 0} destinatarios en este grupo • {selectedGroup?.description}
+                  {targetMode === 'contacts'
+                    ? `${selectedGroup?.contacts.length || 0} destinatarios en este grupo • ${selectedGroup?.description}`
+                    : `Se enviará la notificación directa a ${selectedTargetBotNames.length} bots/sesiones de WhatsApp registradas`}
                 </span>
               </div>
             </div>
 
-            <div className="active-group-actions">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.txt,.json"
-                style={{ display: 'none' }}
-                onChange={handleImportCsvToGroup}
-              />
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => fileInputRef.current?.click()}
-                title="Importar contactos por CSV a este grupo"
-              >
-                <Upload size={15} /> Importar CSV
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => setIsAddContactsModalOpen(true)}
-              >
-                <Plus size={15} /> Añadir Contacto
-              </button>
-              {selectedGroup && !['grp_support', 'grp_sales', 'grp_billing'].includes(selectedGroup.id) && (
+            {targetMode === 'contacts' && (
+              <div className="active-group-actions">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".xlsx,.xls,.csv,.txt,.json"
+                  style={{ display: 'none' }}
+                  onChange={handleImportFileToGroup}
+                />
                 <button
                   type="button"
-                  className="btn-icon"
-                  onClick={() => handleDeleteGroup(selectedGroup.id)}
-                  title="Eliminar grupo"
+                  className="btn-secondary"
+                  onClick={() => fileInputRef.current?.click()}
+                  title="Importar contactos por Excel (.xlsx) o CSV a este grupo"
                 >
-                  <Trash2 size={16} />
+                  <FileSpreadsheet size={15} color="#10b981" /> Importar Excel / CSV
                 </button>
-              )}
-            </div>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setIsAddContactsModalOpen(true)}
+                >
+                  <Plus size={15} /> Añadir Contacto
+                </button>
+                {selectedGroup && !['grp_support', 'grp_sales', 'grp_billing'].includes(selectedGroup.id) && (
+                  <button
+                    type="button"
+                    className="btn-icon"
+                    onClick={() => handleDeleteGroup(selectedGroup.id)}
+                    title="Eliminar grupo"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Contact List in Group (when in contacts mode) */}
+          {targetMode === 'contacts' && selectedGroup && selectedGroup.contacts.length > 0 && (
+            <div style={{ background: 'var(--bg-card, #1e293b)', borderRadius: 10, padding: '10px 14px', border: '1px solid var(--border, #334155)', marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f1f5f9' }}>Contactos en este Grupo ({selectedGroup.contacts.length}):</span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', maxHeight: 80, overflowY: 'auto' }}>
+                {selectedGroup.contacts.map(c => (
+                  <span key={c.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: '2px 8px', fontSize: '0.78rem', color: '#cbd5e1' }}>
+                    {c.name} ({c.phone})
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveContact(c.id)}
+                      style={{ background: 'transparent', border: 'none', color: '#f87171', cursor: 'pointer', padding: 0 }}
+                      title="Eliminar contacto"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Composer Card */}
           <div className="composer-card">
+            {/* Sender Bot Selection & Multi-Bot Dispatch */}
             <div className="composer-controls-row">
               <div className="form-group-unified">
-                <label htmlFor="bcast-session">Chatbot / Sesión WhatsApp Remitente:</label>
-                <select
-                  id="bcast-session"
-                  value={selectedSessionId}
-                  onChange={e => setSelectedSessionId(e.target.value)}
-                >
-                  {sessions.length === 0 ? (
-                    <option value="">No hay sesiones disponibles (conecta una en Sesiones)</option>
-                  ) : (
-                    sessions.map(s => (
-                      <option key={s.name} value={s.name}>
-                        {s.name} ({s.status})
-                      </option>
-                    ))
-                  )}
-                </select>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <label htmlFor="bcast-session">Chatbot Remitente (Emisor):</label>
+                  <label style={{ fontSize: '0.8rem', color: '#60a5fa', display: 'flex', alignItems: 'center', gap: '4px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={multiSenderEnabled}
+                      onChange={e => setMultiSenderEnabled(e.target.checked)}
+                    />
+                    <Zap size={13} /> Multi-Bot (Round-Robin)
+                  </label>
+                </div>
+
+                {!multiSenderEnabled ? (
+                  <select
+                    id="bcast-session"
+                    value={selectedSessionId}
+                    onChange={e => setSelectedSessionId(e.target.value)}
+                  >
+                    {sessions.length === 0 ? (
+                      <option value="">No hay sesiones disponibles (conecta una en Sesiones)</option>
+                    ) : (
+                      sessions.map(s => (
+                        <option key={s.name} value={s.name}>
+                          {s.name} ({s.status === 'ready' ? '🟢 Online' : '⚪ ' + s.status})
+                        </option>
+                      ))
+                    )}
+                  </select>
+                ) : (
+                  <div className="multi-bot-select-grid">
+                    <span style={{ fontSize: '0.78rem', color: '#94a3b8' }}>
+                      Distribuye los mensajes entre los bots seleccionados:
+                    </span>
+                    {sessions.map(bot => {
+                      const isSel = selectedSenderBotNames.includes(bot.name);
+                      return (
+                        <div
+                          key={bot.name}
+                          className={`bot-select-item ${isSel ? 'selected' : ''}`}
+                          onClick={() => handleToggleSenderBot(bot.name)}
+                        >
+                          <span style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem' }}>
+                            {isSel ? <CheckSquare size={14} color="#10b981" /> : <Square size={14} color="#64748b" />}
+                            {bot.name}
+                          </span>
+                          <span className={`bot-status-indicator ${bot.status === 'ready' ? 'connected' : 'disconnected'}`}>
+                            {bot.status === 'ready' ? '🟢 Online' : '⚪ ' + bot.status}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               <div className="form-group-unified">
@@ -561,7 +889,7 @@ export function GroupBroadcasts() {
 
             {/* Quick Template pills */}
             <div className="quick-templates-box">
-              <span className="quick-templates-title">Plantillas rápidas para este grupo:</span>
+              <span className="quick-templates-title">Plantillas rápidas:</span>
               <div className="quick-templates-row">
                 <button
                   type="button"
@@ -591,6 +919,13 @@ export function GroupBroadcasts() {
                 >
                   ⭐ Comunicado VIP
                 </button>
+                <button
+                  type="button"
+                  className="btn-template-pill"
+                  onClick={() => setMessage(QUICK_GROUP_TEMPLATES.bot_announcement)}
+                >
+                  🤖 Aviso a Bots
+                </button>
               </div>
             </div>
 
@@ -600,220 +935,227 @@ export function GroupBroadcasts() {
                 <span className="variables-label">Variables:</span>
                 <button
                   type="button"
-                  className="var-pill"
-                  onClick={() => setMessage(m => m + ' {nombre}')}
+                  className="btn-var-pill"
+                  onClick={() => setMessage(prev => prev + ' {nombre}')}
                 >
-                  + {'{nombre}'}
+                  +{'{nombre}'}
                 </button>
                 <button
                   type="button"
-                  className="var-pill"
-                  onClick={() => setMessage(m => m + ' {grupo}')}
+                  className="btn-var-pill"
+                  onClick={() => setMessage(prev => prev + ' {empresa}')}
                 >
-                  + {'{grupo}'}
+                  +{'{empresa}'}
                 </button>
                 <button
                   type="button"
-                  className="var-pill"
-                  onClick={() => setMessage(m => m + ' {empresa}')}
+                  className="btn-var-pill"
+                  onClick={() => setMessage(prev => prev + ' {telefono}')}
                 >
-                  + {'{empresa}'}
+                  +{'{telefono}'}
                 </button>
                 <button
                   type="button"
-                  className="var-pill"
-                  onClick={() => setMessage(m => m + ' {telefono}')}
+                  className="btn-var-pill"
+                  onClick={() => setMessage(prev => prev + ' {grupo}')}
                 >
-                  + {'{telefono}'}
+                  +{'{grupo}'}
                 </button>
               </div>
 
               <textarea
-                rows={6}
+                rows={7}
                 value={message}
                 onChange={e => setMessage(e.target.value)}
                 placeholder="Escribe el mensaje de difusión..."
+                className="bcast-textarea"
               />
             </div>
 
-            {/* Live Message Preview & Send Action */}
+            {/* Action Buttons */}
             <div className="composer-footer-row">
-              <div className="template-simulation-card">
-                <span className="simulation-badge">
-                  📱 Vista previa en WhatsApp ({sampleContact.name}):
+              <div className="recipients-summary">
+                <span>
+                  Destinatarios listos para envío: <strong>{recipients.length}</strong>
                 </span>
-                <p className="simulation-text">{sampleRenderedMsg}</p>
+                {multiSenderEnabled && (
+                  <span style={{ marginLeft: 12, color: '#34d399', fontSize: '0.8rem' }}>
+                    ⚡ {selectedSenderBotNames.length} bots repartirán la carga
+                  </span>
+                )}
               </div>
 
-              <button
-                type="button"
-                className="btn-primary btn-send-broadcast"
-                onClick={handleSendBroadcast}
-                disabled={
-                  isBroadcasting ||
-                  !selectedSessionId ||
-                  !selectedGroup ||
-                  selectedGroup.contacts.length === 0 ||
-                  !message.trim()
-                }
-              >
-                {isBroadcasting ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Enviando Difusión ({broadcastProgress?.current}/{broadcastProgress?.total})...
-                  </>
-                ) : (
-                  <>
-                    <Send size={18} />
-                    Enviar a {selectedGroup?.contacts.length || 0} Contactos
-                  </>
-                )}
-              </button>
+              <div className="composer-action-buttons">
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={handleCopyCurl}
+                  title="Copiar comando cURL para terminal"
+                >
+                  {copiedCurl ? <Check size={16} /> : <Copy size={16} />}
+                  {copiedCurl ? '¡cURL Copiado!' : 'Copiar cURL'}
+                </button>
+
+                <button
+                  type="button"
+                  className="btn-send-broadcast"
+                  onClick={handleSendBroadcast}
+                  disabled={isBroadcasting || recipients.length === 0 || !message.trim()}
+                >
+                  {isBroadcasting ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" /> Enviando...
+                    </>
+                  ) : (
+                    <>
+                      <Send size={18} /> Enviar Difusión Masiva
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Selected Group Contacts List */}
-          {selectedGroup && selectedGroup.contacts.length > 0 && (
-            <div className="live-logs-card">
-              <h4 className="logs-title">
-                <Users size={16} /> Contactos en {selectedGroup.name} ({selectedGroup.contacts.length})
-              </h4>
-              <div className="logs-stream-container">
-                {selectedGroup.contacts.map(c => (
-                  <div key={c.id} className="log-line">
-                    <span className="log-contact">{c.name}</span>
-                    <span className="log-time">{c.phone} {c.note ? `• ${c.note}` : ''}</span>
-                    <button
-                      type="button"
-                      className="btn-icon"
-                      onClick={() => handleRemoveContact(c.id)}
-                      title="Quitar contacto de este grupo"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ))}
+          {/* Live Preview and cURL Panel */}
+          <div className="preview-and-terminal-grid">
+            {/* WhatsApp Bubble Preview */}
+            <div className="preview-card">
+              <div className="preview-card-header">
+                <span>📱 Vista Previa en WhatsApp:</span>
+                <span className="sample-badge">Para: {sampleRecipient.name}</span>
+              </div>
+              <div className="wa-bubble-preview">
+                <div className="wa-bubble-text">{sampleRenderedMsg}</div>
+                <span className="wa-bubble-time">
+                  10:45 AM <CheckCheck size={14} className="wa-check-icon" />
+                </span>
               </div>
             </div>
-          )}
 
-          {/* Real-time cURL Visualizer */}
-          <div className="curl-visualizer-card">
-            <div className="curl-header">
-              <div className="curl-title">
-                <Terminal size={18} />
-                <span>Comando cURL en Tiempo Real (API Endpoint)</span>
+            {/* Live Terminal cURL */}
+            <div className="terminal-card">
+              <div className="terminal-header">
+                <div className="terminal-title">
+                  <Terminal size={14} /> cURL API Request
+                </div>
+                <button
+                  type="button"
+                  className="btn-copy-terminal"
+                  onClick={handleCopyCurl}
+                  title="Copiar comando"
+                >
+                  {copiedCurl ? <Check size={14} /> : <Copy size={14} />}
+                </button>
               </div>
-              <button
-                type="button"
-                className="btn-copy-curl"
-                onClick={handleCopyCurl}
-              >
-                {copiedCurl ? (
-                  <>
-                    <Check size={14} /> ¡Copiado!
-                  </>
-                ) : (
-                  <>
-                    <Copy size={14} /> Copiar cURL
-                  </>
-                )}
-              </button>
+              <div className="terminal-body">
+                <pre>{liveCurlCommand}</pre>
+              </div>
             </div>
-            <pre className="curl-code-block">
-              <code>{liveCurlCommand}</code>
-            </pre>
           </div>
-
-          {/* Real-time Execution Logs */}
-          {liveLogs.length > 0 && (
-            <div className="live-logs-card">
-              <h4 className="logs-title">
-                <Radio size={16} /> Registro de Envíos en Tiempo Real
-              </h4>
-              <div className="logs-stream-container">
-                {liveLogs.map((log, idx) => (
-                  <div key={idx} className={`log-line ${log.status}`}>
-                    <span className="log-time"><Clock size={12} style={{ display: 'inline', marginRight: '4px' }} />[{log.time}]</span>
-                    <span className="log-contact">{log.name} ({log.phone})</span>
-                    <span className="log-status-badge">
-                      {log.status === 'success' ? '200 OK ✅ Enviado' : `ERROR ❌ ${log.error || 'Falló'}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
-      {/* CREATE NEW GROUP MODAL */}
+      {/* History and Live Execution Logs */}
+      {(liveLogs.length > 0 || history.length > 0) && (
+        <div className="history-section">
+          <div className="history-section-header">
+            <h3>
+              <Clock size={18} /> Registro de Envíos en Tiempo Real
+            </h3>
+          </div>
+
+          {liveLogs.length > 0 && (
+            <div className="live-logs-table-wrapper">
+              <table className="broadcast-table">
+                <thead>
+                  <tr>
+                    <th>Hora</th>
+                    <th>Destinatario</th>
+                    <th>Teléfono</th>
+                    <th>Estado</th>
+                    <th>Detalle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {liveLogs.map((log, idx) => (
+                    <tr key={idx}>
+                      <td>{log.time}</td>
+                      <td>{log.name}</td>
+                      <td>{log.phone}</td>
+                      <td>
+                        <span className={`status-pill ${log.status}`}>
+                          {log.status === 'success' ? 'Enviado' : 'Error'}
+                        </span>
+                      </td>
+                      <td>{log.error || 'Mensaje entregado correctamente a la API'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Modal: Create Group */}
       {isCreateGroupModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsCreateGroupModalOpen(false)}>
-          <div className="modal create-group-modal" onClick={e => e.stopPropagation()}>
+        <div className="modal-backdrop" onClick={() => setIsCreateGroupModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title-with-badge">
-                <div className="modal-header-icon-box">
-                  <Users size={22} />
-                </div>
-                <div>
-                  <h2>Crear Nuevo Grupo de Difusión</h2>
-                  <span className="modal-subtitle">
-                    Segmenta a tus clientes por rol, sector, plan o tipo de servicio
-                  </span>
-                </div>
+              <div className="modal-header-icon-box">
+                <Plus size={22} />
+              </div>
+              <div>
+                <h2>Crear Nuevo Grupo de Clientes</h2>
+                <span className="modal-subtitle">Segmenta tus contactos para difusiones específicas</span>
               </div>
               <button
                 type="button"
-                className="btn-icon"
+                className="btn-icon modal-close-btn"
                 onClick={() => setIsCreateGroupModalOpen(false)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
             <div className="modal-body">
               <div className="form-section-stack">
                 <div className="form-group-unified">
-                  <label>Ícono del Grupo:</label>
-                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                    {ICON_OPTIONS.map(ic => (
+                  <label>Icono del Grupo:</label>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {ICON_OPTIONS.map(icon => (
                       <button
-                        key={ic}
+                        key={icon}
                         type="button"
-                        className={`btn-template-pill ${newGroupIcon === ic ? 'active' : ''}`}
-                        onClick={() => setNewGroupIcon(ic)}
-                        style={{
-                          fontSize: '1.25rem',
-                          padding: '0.35rem 0.65rem',
-                          background: newGroupIcon === ic ? 'rgba(37, 211, 102, 0.2)' : undefined,
-                          borderColor: newGroupIcon === ic ? 'var(--primary, #25d366)' : undefined,
-                        }}
+                        className={`btn-template-pill ${newGroupIcon === icon ? 'active' : ''}`}
+                        onClick={() => setNewGroupIcon(icon)}
+                        style={{ fontSize: '1.2rem', padding: '6px 10px' }}
                       >
-                        {ic}
+                        {icon}
                       </button>
                     ))}
                   </div>
                 </div>
 
                 <div className="form-group-unified">
-                  <label htmlFor="new-group-name">Nombre del Grupo:</label>
+                  <label>
+                    Nombre del Grupo <span className="required-star">*</span>
+                  </label>
                   <input
-                    id="new-group-name"
                     type="text"
-                    placeholder="ej. Clientes Sector Norte, Leads WhatsApp, Morosos 30 días"
+                    required
+                    className="is-required"
+                    placeholder="Ej. Clientes Fibra Residencial Sector Norte"
                     value={newGroupName}
                     onChange={e => setNewGroupName(e.target.value)}
-                    autoFocus
                   />
                 </div>
 
                 <div className="form-group-unified">
-                  <label htmlFor="new-group-desc">Descripción / Objetivo:</label>
+                  <label>Descripción del Segmento</label>
                   <textarea
-                    id="new-group-desc"
                     rows={3}
-                    placeholder="Describe qué clientes o prospectos conforman este grupo..."
+                    placeholder="Describe el perfil de los clientes de este grupo..."
                     value={newGroupDesc}
                     onChange={e => setNewGroupDesc(e.target.value)}
                   />
@@ -835,67 +1177,69 @@ export function GroupBroadcasts() {
                 onClick={handleCreateNewGroup}
                 disabled={!newGroupName.trim()}
               >
-                <Check size={16} /> Crear Grupo
+                Crear Grupo
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ADD SINGLE CONTACT MODAL */}
-      {isAddContactsModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsAddContactsModalOpen(false)}>
-          <div className="modal add-contact-modal" onClick={e => e.stopPropagation()}>
+      {/* Modal: Add Single Contact */}
+      {isAddContactsModalOpen && selectedGroup && (
+        <div className="modal-backdrop" onClick={() => setIsAddContactsModalOpen(false)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
-              <div className="modal-title-with-badge">
-                <div className="modal-header-icon-box">
-                  <Plus size={22} />
-                </div>
-                <div>
-                  <h2>Añadir Contacto a "{selectedGroup?.name}"</h2>
-                  <span className="modal-subtitle">Ingresa los datos del cliente</span>
-                </div>
+              <div className="modal-header-icon-box">
+                <Plus size={22} />
+              </div>
+              <div>
+                <h2>Añadir Contacto a {selectedGroup.name}</h2>
+                <span className="modal-subtitle">Ingresa los datos del destinatario</span>
               </div>
               <button
                 type="button"
-                className="btn-icon"
+                className="btn-icon modal-close-btn"
                 onClick={() => setIsAddContactsModalOpen(false)}
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
             <div className="modal-body">
               <div className="form-section-stack">
                 <div className="form-group-unified">
-                  <label htmlFor="c-name">Nombre Completo:</label>
+                  <label>
+                    Nombre del Contacto <span className="required-star">*</span>
+                  </label>
                   <input
-                    id="c-name"
                     type="text"
-                    placeholder="ej. Carlos Perez"
+                    required
+                    className="is-required"
+                    placeholder="Ej. Juan Pérez"
                     value={contactNameInput}
                     onChange={e => setContactNameInput(e.target.value)}
-                    autoFocus
                   />
                 </div>
 
                 <div className="form-group-unified">
-                  <label htmlFor="c-phone">Número de WhatsApp (con código de país):</label>
+                  <label>
+                    Teléfono con Código de País <span className="required-star">*</span> (ej. 584121234567)
+                  </label>
                   <input
-                    id="c-phone"
                     type="text"
-                    placeholder="ej. 584121234567"
+                    required
+                    className="is-required"
+                    placeholder="584121234567"
                     value={contactPhoneInput}
                     onChange={e => setContactPhoneInput(e.target.value)}
                   />
                 </div>
 
                 <div className="form-group-unified">
-                  <label htmlFor="c-note">Nota / Plan / Ticket (Opcional):</label>
+                  <label>Nota o Detalle (opcional)</label>
                   <input
-                    id="c-note"
                     type="text"
-                    placeholder="ej. Ticket #ST-4821 o Plan 100M"
+                    placeholder="Ej. Plan 100M - Sector Oeste"
                     value={contactNoteInput}
                     onChange={e => setContactNoteInput(e.target.value)}
                   />
@@ -917,7 +1261,7 @@ export function GroupBroadcasts() {
                 onClick={handleAddSingleContact}
                 disabled={!contactPhoneInput.trim()}
               >
-                <Check size={16} /> Guardar Contacto
+                Añadir Contacto
               </button>
             </div>
           </div>
@@ -926,5 +1270,3 @@ export function GroupBroadcasts() {
     </div>
   );
 }
-
-export default GroupBroadcasts;

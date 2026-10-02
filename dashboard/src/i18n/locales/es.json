@@ -65,7 +65,8 @@
     "logs": "Registros",
     "templates": "Plantillas",
     "scheduledMessages": "Mensajes programados",
-    "groupBroadcasts": "Difusión por grupos"
+    "groupBroadcasts": "Difusión por grupos",
+    "apiEndpoints": "Integraciones API"
   },
   "chats": {
     "media": {

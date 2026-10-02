@@ -23,6 +23,7 @@ const ApiKeys = lazy(() => import('./pages/ApiKeys').then(m => ({ default: m.Api
 const MessageTester = lazy(() => import('./pages/MessageTester').then(m => ({ default: m.MessageTester })));
 const ScheduledMessages = lazy(() => import('./pages/ScheduledMessages').then(m => ({ default: m.ScheduledMessages })));
 const GroupBroadcasts = lazy(() => import('./pages/GroupBroadcasts').then(m => ({ default: m.GroupBroadcasts })));
+const ApiEndpoints = lazy(() => import('./pages/ApiEndpoints').then(m => ({ default: m.ApiEndpoints })));
 const Infrastructure = lazy(() => import('./pages/Infrastructure').then(m => ({ default: m.Infrastructure })));
 const Plugins = lazy(() => import('./pages/Plugins'));
 
@@ -116,6 +117,7 @@ function AppContent() {
               <Route path="chats" element={<Chats />} />
               <Route path="scheduled-messages" element={<ScheduledMessages />} />
               <Route path="group-broadcasts" element={<GroupBroadcasts />} />
+              <Route path="api-endpoints" element={<ApiEndpoints />} />
               <Route path="webhooks" element={<Webhooks />} />
               <Route path="templates" element={<Templates />} />
               {role === 'admin' && <Route path="api-keys" element={<ApiKeys />} />}
