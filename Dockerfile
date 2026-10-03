@@ -182,15 +182,21 @@ COPY scripts/postinstall.js scripts/patch-wwebjs-201832.js scripts/wwebjs-201832
 # patcher is added without being copied AND run here — a hand-written list loses one silently, and
 # the Baileys one shipped in postinstall for a whole release without ever reaching the image.
 #
-# --ignore-scripts: this stage has no compiler toolchain, and npm still auto-runs
-# `node-gyp rebuild` for any package shipping a binding.gyp without its own install
-# script (better-sqlite3's major bump ships N-API prebuilds inside the package, so
-# its runtime loader picks prebuilds/<platform>-<arch>.node — compiling here would
-# fail on the missing python). The other native optionals (cpu-features,
-# msgpackr-extract) are optional=true with runtime fallbacks. The patchers that DO
-# need to run are the explicit fatal invocations below; baileys' preinstall is only
-# a node-version check that the engines field enforces anyway.
+# --ignore-scripts: this stage has no compiler toolchain, and npm would otherwise auto-run
+# `node-gyp rebuild` for any package shipping a binding.gyp without its own install script. The
+# other native optionals (cpu-features, msgpackr-extract) are optional=true with runtime fallbacks,
+# so skipping their build here is safe. better-sqlite3 is NOT one of those: its own "install" script
+# is `prebuild-install || node-gyp rebuild --release` (package.json scripts.install), and
+# --ignore-scripts skips that too — so no better_sqlite3.node ever gets downloaded, and the app
+# crashes at boot (bindings.js exhausts its lib/binding/node-vNNN-<platform>-<arch> search list).
+# `npm rebuild <pkg>` still runs a named package's own install script, so it's called out here
+# explicitly: prebuild-install fetches the published prebuild over the network (no compiler needed),
+# falling back to node-gyp only if none exists for this Node ABI/arch — which would fail loudly here
+# for lack of python/make/g++, same as the other native optionals would if forced to compile.
+# The patchers that DO need to run are the explicit fatal invocations below; baileys' preinstall is
+# only a node-version check that the engines field enforces anyway.
 RUN npm ci --omit=dev --ignore-scripts \
+    && npm rebuild better-sqlite3 \
     && node scripts/patch-wwebjs-201832.js \
     && node scripts/patch-wwebjs-newsletter-preview.js \
     && node scripts/patch-wwebjs-status.js \
