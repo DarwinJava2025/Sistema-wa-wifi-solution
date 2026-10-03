@@ -13,6 +13,15 @@ env:
 permissions:
   contents: read
 
+# Every job here reruns on each push to the same branch/PR; without this, three quick fix-up
+# pushes burn three full sets of Actions minutes even though only the last commit's result ever
+# matters. cancel-in-progress: true (unlike release.yml/security-scan.yml's shared `false`, which
+# guard a publish and a scheduled scan that must run to completion) kills the stale run the moment
+# a newer commit lands on the same ref.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   lint:
     name: Lint
