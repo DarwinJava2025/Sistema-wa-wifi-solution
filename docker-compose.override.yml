@@ -1,18 +1,18 @@
-# Despliegue en frontend-server (host actual)
+# Despliegue en BACKEND-SERVER-DEV (10.124.124.27)
 # ---------------------------------------------------------------------------
-# openwa-api reutiliza el PostgreSQL y el Redis que YA corren en este servidor
-# (contenedores bancaribe_db, puerto host 5434, y bancaribe_redis, puerto host 6379) en vez
-# de levantar los servicios "postgres"/"redis" incluidos en docker-compose.yml (profiles
-# 'postgres'/'redis'/'full', que aquí se dejan sin activar).
+# A diferencia del despliegue anterior en frontend-server, este servidor no tiene un
+# Postgres/Redis de otro proyecto para reutilizar -lo que sí corre aquí (postgres-db de
+# customers-register, puerto host 5434) es de otro microservicio, no queremos acoplar OpenWA
+# a su ciclo de vida-. Por eso aquí se usa el perfil 'full' (ver deploy.sh: hay que agregar
+# --profile full al primer `docker compose up`), que levanta el Postgres/Redis/MinIO propios
+# de este proyecto, sin exponerlos al host (solo openwa-network interna) salvo MinIO.
 #
-# host.docker.internal resuelve, desde dentro del contenedor, a la IP del host vía el
-# gateway de Docker (extra_hosts + host-gateway, soportado en Docker 20.10+ en Linux). Así
-# openwa-api llega a los puertos publicados de bancaribe_db/bancaribe_redis sin necesidad de
-# unir su red docker interna.
-#
-# Compose recoge este archivo automáticamente al hacer `docker compose up` (se fusiona con
-# docker-compose.yml sin necesidad de pasar -f).
+# ÚNICO choque real de puertos en este servidor: MinIO pide 127.0.0.1:9000/9001 fijos en
+# docker-compose.yml, y 'portainer' ya tiene el 9000 tomado (ver `docker ps` del servidor,
+# container 'portainer'). Se remapea aquí a 9010/9011 para no chocar -si usas la consola o el
+# API de MinIO desde fuera del contenedor, es por esos puertos, no 9000/9001-.
 services:
-  openwa-api:
-    extra_hosts:
-      - 'host.docker.internal:host-gateway'
+  minio:
+    ports:
+      - '127.0.0.1:9010:9000'
+      - '127.0.0.1:9011:9001'
