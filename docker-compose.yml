@@ -93,7 +93,10 @@ services:
     pids_limit: ${OPENWA_PIDS_LIMIT:-2048}
     mem_limit: ${OPENWA_MEM_LIMIT:-2g} # tune up for many concurrent sessions
     ports:
-      - '127.0.0.1:${API_PORT:-2785}:2785'
+      # API_BIND: interfaz del host donde se publica el puerto. Por defecto solo localhost. En
+      # docker-container-server (10.123.123.3) el bff corre en OTRO servidor (192.168.90.88), así
+      # que en su .env va API_BIND=10.123.123.3 (o 0.0.0.0) y el firewall limita quién entra.
+      - '${API_BIND:-127.0.0.1}:${API_PORT:-2785}:2785'
     expose:
       - '2785'
     environment:
@@ -379,13 +382,10 @@ services:
     volumes:
       - openwa-data:/app/data
       - ./docker-compose.yml:/app/docker-compose.yml:ro
-    # Deploy propio de este servidor: reutilizamos el Postgres/Redis que ya corren para
-    # bancaribe-wifi y plaza-wifi (contenedores bancaribe_db/bancaribe_redis, puertos 5434/6379
-    # publicados al host) en vez de levantar un tercer Postgres+Redis acá -ver postgres/redis
-    # más abajo, que quedan sin usar mientras no se les pase --profile postgres/--profile redis-.
-    # openwa-api corre en la red bridge `openwa-network`, así que "localhost" dentro del
-    # contenedor es el contenedor mismo, no el host -por eso hace falta este extra_hosts para
-    # poder apuntar DATABASE_HOST/REDIS_HOST a host.docker.internal en el .env (ver .env.example).
+    # En docker-container-server OpenWA usa su propio Postgres/Redis (servicios postgres/redis de
+    # abajo, activados con COMPOSE_PROFILES=postgres,redis en el .env; DATABASE_HOST=postgres,
+    # REDIS_HOST=redis). Este extra_hosts queda para el caso de apuntar a un Postgres/Redis del
+    # propio host: dentro del contenedor "localhost" es el contenedor, no el host.
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     depends_on:

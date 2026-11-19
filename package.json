@@ -21,7 +21,6 @@
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "prod": "npm run build:all && node dist/main",
-    "deploy:server": "python deploy_to_server.py",
     "dev": "concurrently -n api,dashboard -c blue,green \"npm run start:dev\" \"npm run dashboard:dev\"",
     "dashboard:install": "cd dashboard && npm install",
     "dashboard:ci": "cd dashboard && npm ci",

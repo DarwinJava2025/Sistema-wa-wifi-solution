@@ -3,7 +3,9 @@
 # ==========================================
 # Configuración del servidor y proyecto
 # ==========================================
-SERVER="alobo@10.124.124.27"
+# docker-container-server (VLAN 123). OpenWA corre aquí con su propio Postgres/Redis; el bff de
+# fiber-optics-portal (192.168.90.88) lo llama por OPENWA_API_URL=http://10.123.123.3:2785.
+SERVER="alobo@10.123.123.3"
 REMOTE_PATH="/var/opt"
 PROJECT_DIR="sistema-wa-wifi-solution"
 ZIP_NAME="sistema-wa-wifi-solution.zip"
@@ -18,9 +20,8 @@ SSH_OPTS=(-o ControlMaster=auto -o "ControlPath=/tmp/openwa-deploy-%C" -o Contro
 echo "🚀 Iniciando proceso de despliegue de $PROJECT_DIR..."
 
 echo "📦 1️⃣ Comprimiendo el proyecto (excluyendo node_modules, dist, .git y datos locales)..."
-# .env NO se incluye en el zip -tiene DATABASE_PASSWORD y apunta al Postgres/Redis compartidos
-# del servidor (host.docker.internal:5434/6379, ver bancaribe-wifi/db-init/02-create-openwa-db.sql)
-# y se edita a mano en el servidor-. Como no está en el zip, el "unzip -o" del paso 3 no tiene con
+# .env NO se incluye en el zip -tiene DATABASE_PASSWORD, API_MASTER_KEY, etc. y se edita a mano
+# en el servidor (ver .env.deploy.example)-. Como no está en el zip, el "unzip -o" del paso 3 no tiene con
 # qué sobrescribir el .env ya desplegado. Si esta exclusión se quita alguna vez, el próximo
 # deploy borraría el .env de producción.
 # node_modules/dist se excluyen porque Docker los reconstruye adentro de la imagen (npm ci +
@@ -36,6 +37,9 @@ zip -r "$ZIP_NAME" . \
   -x "data/*" "*.db" "*.sqlite" "*.sqlite3" \
   -x "*.zip" "deploy.sh" \
   -x "*.DS_Store"
+# La plantilla SÍ va (queda excluida arriba junto con todos los .env.*, que pueden tener secretos):
+# en el primer despliegue el servidor la copia a .env.
+zip "$ZIP_NAME" .env.deploy.example
 
 echo "📤 2️⃣ Subiendo el archivo al servidor..."
 scp "${SSH_OPTS[@]}" "$ZIP_NAME" "$SERVER:$REMOTE_PATH/$ZIP_NAME"
@@ -44,11 +48,25 @@ echo "⚙️  3️⃣ Ejecutando comandos en el servidor..."
 # set -e: si el build o el up fallan, abortamos antes de reportar éxito.
 ssh "${SSH_OPTS[@]}" "$SERVER" "bash -s" << EOF
   set -e
+  mkdir -p $REMOTE_PATH/$PROJECT_DIR
   cd $REMOTE_PATH
   echo "🔹 Descomprimiendo el proyecto..."
-  unzip -o $ZIP_NAME -d $PROJECT_DIR
+  unzip -o -q $ZIP_NAME -d $PROJECT_DIR
 
   cd $PROJECT_DIR
+  # Primer despliegue en este servidor: sin .env no hay contraseñas de la base ni API_MASTER_KEY,
+  # y la API se negaría a arrancar en producción. Se deja la plantilla copiada y se detiene.
+  if [ ! -f .env ]; then
+    cp .env.deploy.example .env
+    chmod 600 .env
+    echo "⚠️  No había .env: se creó desde .env.deploy.example en \$(pwd)/.env"
+    echo "    Rellena los CHANGE_ME (nano .env) y vuelve a correr ./deploy.sh."
+    exit 1
+  fi
+  if grep -q CHANGE_ME .env; then
+    echo "❌ .env todavía tiene valores CHANGE_ME. Rellénalos (nano \$(pwd)/.env) y vuelve a correr ./deploy.sh."
+    exit 1
+  fi
   echo "🔹 Construyendo la imagen (Docker instala dependencias y compila adentro)..."
   docker compose build
 
@@ -96,4 +114,5 @@ fi
 echo "🧹 Limpiando archivo local..."
 rm -f "$ZIP_NAME"
 
-echo "✅ ¡Despliegue completo! API en http://localhost:2785 (solo accesible desde el propio servidor)."
+echo "✅ ¡Despliegue completo! API en http://10.123.123.3:2785 (según API_BIND del .env)."
+echo "   En el bff (192.168.90.88): OPENWA_API_URL=http://10.123.123.3:2785 y pm2 restart fiber-optics-bff."
